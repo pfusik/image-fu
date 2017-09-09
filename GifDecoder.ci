@@ -1,0 +1,160 @@
+public class GifDecoder
+{
+	byte[] Input;
+	int InputLength;
+	int InputOffset;
+
+	int ReadByte()
+	{
+		if (InputOffset >= InputLength)
+			throw "Unexpected EOF";
+		return Input[InputOffset++];
+	}
+
+	int ReadWord()
+	{
+		int lo = ReadByte();
+		return lo | ReadByte() << 8;
+	}
+
+	int Width;
+	int Height;
+	int[256] Palette;
+	byte[] Pixels;
+
+	void ReadPalette(int flags)
+	{
+		if ((flags & 0x80) != 0) {
+			int colors = 2 << (flags & 7);
+			for (int i = 0; i < colors; i++) {
+				int r = ReadByte();
+				int g = ReadByte();
+				int b = ReadByte();
+				Palette[i] = r << 16 | g << 8 | b;
+			}
+		}
+	}
+
+	int BlockBytes;
+
+	int ReadBlockByte()
+	{
+		if (BlockBytes == 0) {
+			BlockBytes = ReadByte();
+			if (BlockBytes == 0)
+				throw "Unexpected block terminator";
+		}
+		BlockBytes--;
+		return ReadByte();
+	}
+
+	int BitBuffer;
+	int BitBufferBits;
+
+	int ReadCode(int bits)
+	{
+		while (BitBufferBits < bits) {
+			BitBuffer |= ReadBlockByte() << BitBufferBits;
+			BitBufferBits += 8;
+		}
+		int result = BitBuffer & (1 << bits) - 1;
+		BitBuffer >>= bits;
+		BitBufferBits -= bits;
+		return result;
+	}
+
+	void Decode()
+	{
+		InputOffset = 0;
+		if (ReadByte() != 'G'
+		 || ReadByte() != 'I'
+		 || ReadByte() != 'F'
+		 || ReadByte() != '8')
+			throw "Not a GIF";
+		switch (ReadByte()) {
+		case '7':
+		case '9':
+			break;
+		default:
+			throw "Not a GIF";
+		}
+		if (ReadByte() != 'a')
+			throw "Not a GIF";
+		ReadWord();
+		ReadWord();
+		int flags = ReadByte();
+		ReadByte(); // background color index
+		ReadByte(); // pixel aspect ratio
+		ReadPalette(flags);
+
+		for (;;) {
+			int b = ReadByte();
+			if (b == 0x2c) // Image Descriptor
+				break;
+			if (b != 0x21) // Extension
+				throw "Invalid block";
+			ReadByte();
+			for (;;) {
+				int length = ReadByte();
+				if (length == 0)
+					break;
+				while (--length >= 0)
+					ReadByte();
+			}
+		}
+
+		ReadWord();
+		ReadWord();
+		Width = ReadWord();
+		Height = ReadWord();
+		if (Width == 0 || Height == 0)
+			throw "Zero size";
+		flags = ReadByte();
+		if ((flags & 0x40) != 0)
+			throw "Interlace not supported";
+		ReadPalette(flags);
+		int literalBits = ReadByte();
+		if (literalBits == 0 || literalBits > 8)
+			throw "Invalid minimum code size";
+
+		BlockBytes = 0;
+		BitBuffer = 0;
+		BitBufferBits = 0;
+		int pixelsLength = Width * Height;
+		Pixels = new byte[pixelsLength];
+		int codes = (1 << literalBits) + 2;
+		int codeBits = literalBits + 1;
+		const int maxCodes = 4096;
+		int[maxCodes + 1] offsets; // short
+
+		for (int pixelsOffset = 0; pixelsOffset < pixelsLength; ) {
+			int code = ReadCode(codeBits);
+			if (code == 1 << literalBits) {
+				// reset
+				codes = (1 << literalBits) + 2;
+				codeBits = literalBits + 1;
+				continue;
+			}
+			if (code == (1 << literalBits) + 1)
+				throw "Unexpected EOI";
+			if (code >= codes)
+				throw "Code out of range";
+			if (codes <= maxCodes) {
+				if (codes < maxCodes && (codes & codes - 1) == 0)
+					codeBits++;
+				offsets[codes++] = pixelsOffset;
+			}
+			if (code < 1 << literalBits)
+				Pixels[pixelsOffset++] = code;
+			else {
+				int sourceOffset = offsets[code];
+				int endOffset = offsets[code + 1];
+				if (pixelsOffset + endOffset - sourceOffset >= pixelsLength)
+					throw "Too many pixels";
+				do
+					Pixels[pixelsOffset++] = Pixels[sourceOffset++];
+				while (sourceOffset <= endOffset);
+			}
+		}
+	}
+}

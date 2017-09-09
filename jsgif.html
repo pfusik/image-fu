@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+	<meta http-equiv="content-type" content="application/xhtml+xml; charset=UTF-8"/>
+	<title>JavaScript GIF Decoder</title>
+	<style type="text/css">
+		html { background-color: #eee; color: #000; font-family: Georgia,"Times New Roman",Times,serif; }
+	</style>
+	<script type="text/javascript" src="GifDecoder.js"> </script>
+	<script type="text/javascript" src="jsgif.js"> </script>
+</head>
+<body>
+	<h1>Pure JavaScript GIF Decoder</h1>
+	<p>This page decodes GIF pictures in JavaScript code.</p>
+	<p>Select file: <input type="file" accept="image/gif" onchange="openFile(this.files[0])"/></p>
+	<div style="border: solid black 1px; padding-top: 2em; padding-bottom: 2em;" ondragenter="dragHelper(event)" ondragover="dragHelper(event)" ondrop="onDrop(event)">
+		... or drag&amp;drop a file here!<br/>
+		<canvas id="canvas" width="1" height="1"> </canvas>
+		<div id="status"> </div>
+	</div>
+</body>
+</html>
