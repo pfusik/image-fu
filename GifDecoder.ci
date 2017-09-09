@@ -22,6 +22,18 @@ public class GifDecoder
 	int[256] Palette;
 	byte[] Pixels;
 
+	public int GetWidth()
+		return Width;
+
+	public int GetHeight()
+		return Height;
+
+	public int[] GetPalette()
+		return Palette;
+
+	public byte[] GetPixels()
+		return Pixels;
+
 	void ReadPalette(int flags)
 	{
 		if ((flags & 0x80) != 0) {
@@ -63,8 +75,10 @@ public class GifDecoder
 		return result;
 	}
 
-	void Decode()
+	public void Decode(byte[] input, int inputLength)
 	{
+		Input = input;
+		InputLength = inputLength;
 		InputOffset = 0;
 		if (ReadByte() != 'G'
 		 || ReadByte() != 'I'

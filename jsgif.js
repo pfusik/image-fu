@@ -1,25 +1,24 @@
 function gif2canvas(input)
 {
 	var decoder = new GifDecoder();
-	decoder.input = input;
-	decoder.inputLength = input.length;
 	try {
-		decoder.decode();
+		decoder.decode(input, input.length);
 	} catch (e) {
 		alert(e);
 		return;
 	}
 
 	var canvas = document.getElementById("canvas");
-	var width = decoder.width;
-	var height = decoder.height;
-	var pixels = decoder.pixels;
+	var width = decoder.getWidth();
+	var height = decoder.getHeight();
+	var palette = decoder.getPalette();
+	var pixels = decoder.getPixels();
 	canvas.width = width;
 	canvas.height = height;
 	var context = canvas.getContext("2d");
 	var imageData = context.createImageData(width, height);
 	for (var i = 0; i < width * height; i++) {
-		var rgb = decoder.palette[pixels[i]];
+		var rgb = palette[pixels[i]];
 		var j = i << 2;
 		imageData.data[j] = rgb >> 16;
 		imageData.data[j + 1] = rgb >> 8 & 0xff;
