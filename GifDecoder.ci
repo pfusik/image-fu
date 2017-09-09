@@ -1,5 +1,32 @@
+/// Decoder of the GIF bitmap format.
 public class GifDecoder
 {
+	int Width;
+	int Height;
+	int[256] Palette;
+	byte[] Pixels;
+
+	/// Returns image width.
+	public int GetWidth()
+		return Width;
+
+	/// Returns image height.
+	public int GetHeight()
+		return Height;
+
+	/// Returns image color table as a 256-element array.
+	/// Each entry is a 24-bit integer of the form 0xRRGGBB.
+	public int[] GetPalette()
+		return Palette;
+
+	/// Returns pixels, top-down, left-to-right.
+	/// The values are indices in the color table (see `GetPalette`)
+	/// The returned array is `width*height` long.
+	/// It is allocated in `Decode`.
+	/// In C, you should call `free` on it when you no longer need it.
+	public byte[] GetPixels()
+		return Pixels;
+
 	byte[] Input;
 	int InputLength;
 	int InputOffset;
@@ -16,23 +43,6 @@ public class GifDecoder
 		int lo = ReadByte();
 		return lo | ReadByte() << 8;
 	}
-
-	int Width;
-	int Height;
-	int[256] Palette;
-	byte[] Pixels;
-
-	public int GetWidth()
-		return Width;
-
-	public int GetHeight()
-		return Height;
-
-	public int[] GetPalette()
-		return Palette;
-
-	public byte[] GetPixels()
-		return Pixels;
 
 	void ReadPalette(int flags)
 	{
@@ -75,11 +85,19 @@ public class GifDecoder
 		return result;
 	}
 
-	public void Decode(byte[] input, int inputLength)
+	/// Decodes a GIF stream passed as a byte array.
+	/// Throws an exception on error.
+	public void Decode(
+		/// The content of the GIF stream.
+		byte[] input,
+		/// The length of the GIF stream.
+		int inputLength)
 	{
+		Pixels = null;
 		Input = input;
 		InputLength = inputLength;
 		InputOffset = 0;
+
 		if (ReadByte() != 'G'
 		 || ReadByte() != 'I'
 		 || ReadByte() != 'F'
@@ -94,12 +112,12 @@ public class GifDecoder
 		}
 		if (ReadByte() != 'a')
 			throw "Not a GIF";
-		ReadWord();
-		ReadWord();
+		ReadWord(); // screen width
+		ReadWord(); // screen height
 		int flags = ReadByte();
 		ReadByte(); // background color index
 		ReadByte(); // pixel aspect ratio
-		ReadPalette(flags);
+		ReadPalette(flags); // global palette
 
 		for (;;) {
 			int b = ReadByte();
@@ -126,7 +144,7 @@ public class GifDecoder
 		flags = ReadByte();
 		if ((flags & 0x40) != 0)
 			throw "Interlace not supported";
-		ReadPalette(flags);
+		ReadPalette(flags); // local palette
 		int literalBits = ReadByte();
 		if (literalBits == 0 || literalBits > 8)
 			throw "Invalid minimum code size";
@@ -136,21 +154,22 @@ public class GifDecoder
 		BitBufferBits = 0;
 		int pixelsLength = Width * Height;
 		Pixels = new byte[pixelsLength];
-		int codes = (1 << literalBits) + 2;
+		int literalCodes = 1 << literalBits;
+		int codes = literalCodes + 2;
 		int codeBits = literalBits + 1;
 		const int maxCodes = 4096;
-		int[maxCodes + 1] offsets; // short
+		int[maxCodes + 1] offsets;
 
 		for (int pixelsOffset = 0; pixelsOffset < pixelsLength; ) {
 			int code = ReadCode(codeBits);
-			if (code == 1 << literalBits) {
+			if (code == literalCodes) {
 				// reset
-				codes = (1 << literalBits) + 2;
+				codes = literalCodes + 2;
 				codeBits = literalBits + 1;
 				continue;
 			}
-			if (code == (1 << literalBits) + 1)
-				throw "Unexpected EOI";
+			if (code == literalCodes + 1)
+				throw "Unexpected EOI code";
 			if (code >= codes)
 				throw "Code out of range";
 			if (codes <= maxCodes) {
@@ -158,7 +177,7 @@ public class GifDecoder
 					codeBits++;
 				offsets[codes++] = pixelsOffset;
 			}
-			if (code < 1 << literalBits)
+			if (code < literalCodes)
 				Pixels[pixelsOffset++] = code;
 			else {
 				int sourceOffset = offsets[code];
