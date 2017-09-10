@@ -158,7 +158,17 @@ public class GifDecoder
 		int codes = literalCodes + 2;
 		int codeBits = literalBits + 1;
 		const int maxCodes = 4096;
+#if STANDALONE_DICTIONARY
+		int[maxCodes] prefixes; // short
+		byte[maxCodes] suffixes;
+		for (int i = 0; i < literalCodes; i++) {
+			prefixes[i] = -1;
+			suffixes[i] = i;
+		}
+		byte pixel = 0;
+#else
 		int[maxCodes + 1] offsets;
+#endif
 
 		for (int pixelsOffset = 0; pixelsOffset < pixelsLength; ) {
 			int code = ReadCode(codeBits);
@@ -172,6 +182,35 @@ public class GifDecoder
 				throw "Unexpected EOI code";
 			if (code >= codes)
 				throw "Code out of range";
+
+#if STANDALONE_DICTIONARY
+			int c = code;
+			do {
+				pixelsOffset++;
+				c = prefixes[c];
+			} while (c >= 0);
+			if (pixelsOffset > pixelsLength)
+				throw "Too many pixels";
+
+			int destOffset = pixelsOffset;
+			c = code;
+			do {
+				if (c < codes - 1)
+					pixel = suffixes[c];
+				Pixels[--destOffset] = pixel;
+				c = prefixes[c];
+			} while (c >= 0);
+
+			if (codes <= maxCodes) {
+				suffixes[codes - 1] = pixel;
+				if (codes < maxCodes) {
+					prefixes[codes] = code;
+					if ((codes & codes - 1) == 0)
+						codeBits++;
+				}
+				codes++;
+			}
+#else
 			if (codes <= maxCodes) {
 				if (codes < maxCodes && (codes & codes - 1) == 0)
 					codeBits++;
@@ -188,6 +227,7 @@ public class GifDecoder
 					Pixels[pixelsOffset++] = Pixels[sourceOffset++];
 				while (sourceOffset <= endOffset);
 			}
+#endif
 		}
 	}
 }
