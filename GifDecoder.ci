@@ -5,6 +5,7 @@ public class GifDecoder
 	int Height;
 	int[256] Palette;
 	byte[] Pixels;
+	bool Interlace;
 
 	/// Returns image width.
 	public int GetWidth()
@@ -85,6 +86,23 @@ public class GifDecoder
 		return result;
 	}
 
+	int ToInterlaceOffset(int offset)
+	{
+		if (!Interlace)
+			return offset;
+		int y = offset / Width;
+		int x = offset % Width;
+		if (y >= Height + 1 >> 1)
+			y = y - (Height + 1 >> 1) << 1 | 1; // pass 4
+		else if (y >= Height + 3 >> 2)
+			y = y - (Height + 3 >> 2) << 2 | 2; // pass 3
+		else if (y >= Height + 7 >> 3)
+			y = y - (Height + 7 >> 3) << 3 | 4; // pass 2
+		else
+			y <<= 3; // pass 1
+		return y * Width + x;
+	}
+
 	/// Decodes a GIF stream passed as a byte array.
 	/// Throws an exception on error.
 	public void Decode(
@@ -142,8 +160,7 @@ public class GifDecoder
 		if (Width == 0 || Height == 0)
 			throw "Zero size";
 		flags = ReadByte();
-		if ((flags & 0x40) != 0)
-			throw "Interlace not supported";
+		Interlace = (flags & 0x40) != 0;
 		ReadPalette(flags); // local palette
 		int literalBits = ReadByte();
 		if (literalBits == 0 || literalBits > 8)
@@ -197,7 +214,7 @@ public class GifDecoder
 			do {
 				if (c < codes - 1)
 					pixel = suffixes[c];
-				Pixels[--destOffset] = pixel;
+				Pixels[ToInterlaceOffset(--destOffset)] = pixel;
 				c = prefixes[c];
 			} while (c >= 0);
 
@@ -217,14 +234,14 @@ public class GifDecoder
 				offsets[codes++] = pixelsOffset;
 			}
 			if (code < literalCodes)
-				Pixels[pixelsOffset++] = code;
+				Pixels[ToInterlaceOffset(pixelsOffset++)] = code;
 			else {
 				int sourceOffset = offsets[code];
 				int endOffset = offsets[code + 1];
 				if (pixelsOffset + endOffset - sourceOffset >= pixelsLength)
 					throw "Too many pixels";
 				do
-					Pixels[pixelsOffset++] = Pixels[sourceOffset++];
+					Pixels[ToInterlaceOffset(pixelsOffset++)] = Pixels[ToInterlaceOffset(sourceOffset++)];
 				while (sourceOffset <= endOffset);
 			}
 #endif
