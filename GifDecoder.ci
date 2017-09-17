@@ -16,7 +16,7 @@ public class GifDecoder
 		return Height;
 
 	/// Returns image color table as a 256-element array.
-	/// Each entry is a 24-bit integer of the form 0xRRGGBB.
+	/// Each entry is a 32-bit integer of the form 0xAARRGGBB.
 	public int[] GetPalette()
 		return Palette;
 
@@ -53,7 +53,7 @@ public class GifDecoder
 				int r = ReadByte();
 				int g = ReadByte();
 				int b = ReadByte();
-				Palette[i] = r << 16 | g << 8 | b;
+				Palette[i] = 0xff00 + r << 16 | g << 8 | b;
 			}
 		}
 	}
@@ -137,13 +137,22 @@ public class GifDecoder
 		ReadByte(); // pixel aspect ratio
 		ReadPalette(flags); // global palette
 
+		int transparentColor = -1;
 		for (;;) {
 			int b = ReadByte();
 			if (b == 0x2c) // Image Descriptor
 				break;
 			if (b != 0x21) // Extension
 				throw "Invalid block";
-			ReadByte();
+			if (ReadByte() == 0xf9) {
+				if (ReadByte() != 4)
+					throw "Invalid block";
+				flags = ReadByte();
+				ReadWord();
+				b = ReadByte();
+				if ((flags & 1) != 0)
+					transparentColor = b;
+			}
 			for (;;) {
 				int length = ReadByte();
 				if (length == 0)
@@ -165,6 +174,8 @@ public class GifDecoder
 		int literalBits = ReadByte();
 		if (literalBits == 0 || literalBits > 8)
 			throw "Invalid minimum code size";
+		if (transparentColor >= 0)
+			Palette[transparentColor] &= 0xffffff;
 
 		BlockBytes = 0;
 		BitBuffer = 0;

@@ -20,10 +20,10 @@ function gif2canvas(input)
 	for (var i = 0; i < width * height; i++) {
 		var rgb = palette[pixels[i]];
 		var j = i << 2;
-		imageData.data[j] = rgb >> 16;
+		imageData.data[j] = rgb >> 16 & 0xff;
 		imageData.data[j + 1] = rgb >> 8 & 0xff;
 		imageData.data[j + 2] = rgb & 0xff;
-		imageData.data[j + 3] = 0xff;
+		imageData.data[j + 3] = rgb >> 24 & 0xff;
 	}
 	context.putImageData(imageData, 0, 0);
 
