@@ -1,43 +1,7 @@
 /// Decoder of the GIF bitmap format.
-public class GifDecoder
+public class GifDecoder : ImageDecoder
 {
-	int Width;
-	int Height;
-	int[256] Palette;
-	byte[] Pixels;
 	bool Interlace;
-
-	/// Returns image width.
-	public int GetWidth()
-		return Width;
-
-	/// Returns image height.
-	public int GetHeight()
-		return Height;
-
-	/// Returns image color table as a 256-element array.
-	/// Each entry is a 32-bit integer of the form 0xAARRGGBB.
-	public int[] GetPalette()
-		return Palette;
-
-	/// Returns pixels, top-down, left-to-right.
-	/// The values are indices in the color table (see `GetPalette`)
-	/// The returned array is `width*height` long.
-	/// It is allocated in `Decode`.
-	/// In C, you should call `free` on it when you no longer need it.
-	public byte[] GetPixels()
-		return Pixels;
-
-	byte[] Input;
-	int InputLength;
-	int InputOffset;
-
-	int ReadByte()
-	{
-		if (InputOffset >= InputLength)
-			throw "Unexpected EOF";
-		return Input[InputOffset++];
-	}
 
 	int ReadWord()
 	{
@@ -47,15 +11,8 @@ public class GifDecoder
 
 	void ReadPalette(int flags)
 	{
-		if ((flags & 0x80) != 0) {
-			int colors = 2 << (flags & 7);
-			for (int i = 0; i < colors; i++) {
-				int r = ReadByte();
-				int g = ReadByte();
-				int b = ReadByte();
-				Palette[i] = 0xff00 + r << 16 | g << 8 | b;
-			}
-		}
+		if ((flags & 0x80) != 0)
+			ReadRgbPalette(2 << (flags & 7));
 	}
 
 	int BlockBytes;
@@ -90,32 +47,23 @@ public class GifDecoder
 	{
 		if (!Interlace)
 			return offset;
-		int y = offset / Width;
-		int x = offset % Width;
-		if (y >= Height + 1 >> 1)
-			y = y - (Height + 1 >> 1) << 1 | 1; // pass 4
-		else if (y >= Height + 3 >> 2)
-			y = y - (Height + 3 >> 2) << 2 | 2; // pass 3
-		else if (y >= Height + 7 >> 3)
-			y = y - (Height + 7 >> 3) << 3 | 4; // pass 2
+		int width = Result.Width;
+		int height = Result.Height;
+		int y = offset / width;
+		int x = offset % width;
+		if (y >= height + 1 >> 1)
+			y = y - (height + 1 >> 1) << 1 | 1; // pass 4
+		else if (y >= height + 3 >> 2)
+			y = y - (height + 3 >> 2) << 2 | 2; // pass 3
+		else if (y >= height + 7 >> 3)
+			y = y - (height + 7 >> 3) << 3 | 4; // pass 2
 		else
 			y <<= 3; // pass 1
-		return y * Width + x;
+		return y * width + x;
 	}
 
-	/// Decodes a GIF stream passed as a byte array.
-	/// Throws an exception on error.
-	public void Decode(
-		/// The content of the GIF stream.
-		byte[] input,
-		/// The length of the GIF stream.
-		int inputLength)
+	override void DoDecode()
 	{
-		Pixels = null;
-		Input = input;
-		InputLength = inputLength;
-		InputOffset = 0;
-
 		if (ReadByte() != 'G'
 		 || ReadByte() != 'I'
 		 || ReadByte() != 'F'
@@ -164,9 +112,9 @@ public class GifDecoder
 
 		ReadWord();
 		ReadWord();
-		Width = ReadWord();
-		Height = ReadWord();
-		if (Width == 0 || Height == 0)
+		Result.Width = ReadWord();
+		Result.Height = ReadWord();
+		if (Result.Width == 0 || Result.Height == 0)
 			throw "Zero size";
 		flags = ReadByte();
 		Interlace = (flags & 0x40) != 0;
@@ -174,19 +122,24 @@ public class GifDecoder
 		int literalBits = ReadByte();
 		if (literalBits == 0 || literalBits > 8)
 			throw "Invalid minimum code size";
-		if (transparentColor >= 0)
-			Palette[transparentColor] &= 0xffffff;
+		if (transparentColor >= 0) {
+			// make it transparent, but keep the color
+			// just in case someone needs it
+			Result.Palette[transparentColor] &= 0xffffff;
+		}
 
 		BlockBytes = 0;
 		BitBuffer = 0;
 		BitBufferBits = 0;
-		int pixelsLength = Width * Height;
-		Pixels = new byte[pixelsLength];
+		int pixelsLength = Result.Width * Result.Height;
+		Result.Depth = 8;
+		Result.Type = 3; // indexed
+		Result.Pixels = new byte[pixelsLength];
 		int literalCodes = 1 << literalBits;
 		int codes = literalCodes + 2;
 		int codeBits = literalBits + 1;
 		const int maxCodes = 4096;
-#if STANDALONE_DICTIONARY
+#if GIF_DICTIONARY
 		int[maxCodes] prefixes; // short
 		byte[maxCodes] suffixes;
 		for (int i = 0; i < literalCodes; i++) {
@@ -211,7 +164,7 @@ public class GifDecoder
 			if (code >= codes)
 				throw "Code out of range";
 
-#if STANDALONE_DICTIONARY
+#if GIF_DICTIONARY
 			int c = code;
 			do {
 				pixelsOffset++;
@@ -225,7 +178,7 @@ public class GifDecoder
 			do {
 				if (c < codes - 1)
 					pixel = suffixes[c];
-				Pixels[ToInterlaceOffset(--destOffset)] = pixel;
+				Result.Pixels[ToInterlaceOffset(--destOffset)] = pixel;
 				c = prefixes[c];
 			} while (c >= 0);
 
@@ -245,14 +198,14 @@ public class GifDecoder
 				offsets[codes++] = pixelsOffset;
 			}
 			if (code < literalCodes)
-				Pixels[ToInterlaceOffset(pixelsOffset++)] = code;
+				Result.Pixels[ToInterlaceOffset(pixelsOffset++)] = code;
 			else {
 				int sourceOffset = offsets[code];
 				int endOffset = offsets[code + 1];
 				if (pixelsOffset + endOffset - sourceOffset >= pixelsLength)
 					throw "Too many pixels";
 				do
-					Pixels[ToInterlaceOffset(pixelsOffset++)] = Pixels[ToInterlaceOffset(sourceOffset++)];
+					Result.Pixels[ToInterlaceOffset(pixelsOffset++)] = Result.Pixels[ToInterlaceOffset(sourceOffset++)];
 				while (sourceOffset <= endOffset);
 			}
 #endif

@@ -1,0 +1,102 @@
+/// Bitmap.
+public class Image
+{
+	int Width;
+	int Height;
+	int Type;
+	int Depth;
+	int[256] Palette;
+	byte[] Pixels;
+
+	/// Returns image width.
+	public int GetWidth()
+		return Width;
+
+	/// Returns image height.
+	public int GetHeight()
+		return Height;
+
+	/// Returns pixel at the given position in the form 0xAARRGGBB.
+	public int GetPixel(int x, int y)
+	{
+		int b;
+		int bytesPerComponent;
+		int offset;
+
+		switch (Type) {
+
+		case 0: // grayscale
+			switch (Depth) {
+			case 1:
+				b = Pixels[y * (Width + 7 >> 3) + (x >> 3)] >> (~x & 7) & 1;
+				if (b != 0)
+					b = 0xffffff;
+				break;
+			case 2:
+				b = Pixels[y * (Width + 3 >> 2) + (x >> 2)] >> ((~x & 3) << 1) & 3;
+				b *= 0x55;
+				break;
+			case 4:
+				b = Pixels[y * (Width + 1 >> 1) + (x >> 1)];
+				b = (x & 1) == 0 ? b >> 4 : b & 15;
+				b *= 0x11;
+				break;
+			case 8:
+				b = Pixels[y * Width + x];
+				break;
+			case 16:
+				b = Pixels[y * Width + x << 1];
+				break;
+			default:
+				return 0;
+			}
+			return 0xff << 24 | b * 0x010101;
+
+		case 2: // RGB
+			bytesPerComponent = Depth >> 3;
+			offset = (y * Width + x) * (3 * bytesPerComponent);
+			return 0xff << 24
+			     | Pixels[offset] << 16
+			     | Pixels[offset + bytesPerComponent] << 8
+			     | Pixels[offset + 2 * bytesPerComponent];
+
+		case 3: // indexed
+			switch (Depth) {
+			case 1:
+				b = Pixels[y * (Width + 7 >> 3) + (x >> 3)] >> (~x & 7) & 1;
+				break;
+			case 2:
+				b = Pixels[y * (Width + 3 >> 2) + (x >> 2)] >> ((~x & 3) << 1) & 3;
+				break;
+			case 4:
+				b = Pixels[y * (Width + 1 >> 1) + (x >> 1)];
+				b = (x & 1) == 0 ? b >> 4 : b & 15;
+				break;
+			case 8:
+				b = Pixels[y * Width + x];
+				break;
+			default:
+				return 0;
+			}
+			return Palette[b];
+
+		case 4: // grayscale+alpha
+			bytesPerComponent = Depth >> 3;
+			offset = (y * Width + x) * (2 * bytesPerComponent);
+			return Pixels[offset + bytesPerComponent] << 24
+			     | Pixels[offset] * 0x010101;
+
+		case 6: // RGBA
+			bytesPerComponent = Depth >> 3;
+			offset = (y * Width + x) * (4 * bytesPerComponent);
+			return Pixels[offset + 3 * bytesPerComponent] << 24
+			     | Pixels[offset] << 16
+			     | Pixels[offset + bytesPerComponent] << 8
+			     | Pixels[offset + 2 * bytesPerComponent];
+
+		default:
+			return 0;
+		}
+	}
+
+}

@@ -1,0 +1,379 @@
+/// Decoder of the PNG bitmap format.
+public class PngDecoder : ImageDecoder
+{
+	static int Abs(int x)
+		return x >= 0 ? x : -x;
+
+	int ReadLong()
+	{
+		int result = ReadByte() << 24;
+		result |= ReadByte() << 16;
+		result |= ReadByte() << 8;
+		result |= ReadByte();
+		return result;
+	}
+
+	static int ToChunkType(string s)
+		return s[0] << 24 | s[1] << 16 | s[2] << 8 | s[3];
+
+	int ChunkRemaining;
+
+	int ReadIdatByte()
+	{
+		while (--ChunkRemaining < 0) {
+			ReadLong(); // CRC
+			ChunkRemaining = ReadLong();
+			if (ReadLong() != ToChunkType("IDAT"))
+				throw "Invalid chunk";
+		}
+		return ReadByte();
+	}
+
+	int Bits;
+
+	int ReadBit()
+	{
+		if (Bits <= 1) {
+			Bits = ReadIdatByte() | 0x100;
+		}
+		int result = Bits & 1;
+		Bits >>= 1;
+		return result;
+	}
+
+	int ReadBits(int count)
+	{
+		int result = 0;
+		for (int rank = 0; rank < count; rank++) {
+			if (ReadBit() != 0)
+				result |= 1 << rank;
+		}
+		return result;
+	}
+
+	const int PrimarySymbols = 256 + 1 + 29 + 2;
+	const int DistanceSymbols = 30;
+	const int AllSymbols = PrimarySymbols + DistanceSymbols;
+	byte[AllSymbols] SymbolCodeLength;
+
+	const int TreeSize = 16;
+	const int PrimaryTree = 0;
+	const int DistanceTree = TreeSize;
+	int[2 * TreeSize] NBitCodeCount;
+	int[2 * TreeSize] NBitCodeOffset;
+	int[AllSymbols] CodeToSymbol; // TODO: short
+
+	void BuildHuffmanTrees()
+	{
+		NBitCodeCount.Clear();
+		for (int i = 0; i < AllSymbols; i++)
+			NBitCodeCount[SymbolCodeLength[i]]++;
+		int offset = 0;
+		for (int i = 0; i < 2 * TreeSize; i++) {
+			NBitCodeOffset[i] = offset;
+			offset += NBitCodeCount[i];
+		}
+		for (int i = 0; i < AllSymbols; i++)
+			CodeToSymbol[NBitCodeOffset[SymbolCodeLength[i]]++] = i;
+	}
+
+	int FetchCode(int tree)
+	{
+		int code = 0;
+		do {
+			int bit = ReadBit();
+			code = (code << 1) + bit - NBitCodeCount[++tree];
+			if (code < 0)
+				return CodeToSymbol[NBitCodeOffset[tree] + code];
+		} while ((tree & 0xf) != 0xf);
+		throw "Decompression error";
+	}
+
+	void Inflate(byte[] unpacked, int unpackedLength)
+	{
+		int unpackedOffset = 0;
+		Bits = 0;
+
+		int lastBlock;
+		do {
+			lastBlock = ReadBit();
+			int count;
+			switch (ReadBits(2)) {
+			case 0:
+				Bits = 0;
+				count = ReadBits(16);
+				if (ReadBits(16) != (count ^ 0xffff))
+					throw "Decompression error";
+				while (--count >= 0) {
+					unpacked[unpackedOffset++] = ReadIdatByte();
+					if (unpackedOffset == unpackedLength)
+						return;
+				}
+				continue;
+
+			case 1:
+				for (int i = 0; i < 144; i++)
+					SymbolCodeLength[i] = 8;
+				for (int i = 144; i < 256; i++)
+					SymbolCodeLength[i] = 9;
+				for (int i = 256; i < 280; i++)
+					SymbolCodeLength[i] = 7;
+				for (int i = 280; i < 288; i++)
+					SymbolCodeLength[i] = 8;
+				for (int i = 288; i < 288 + DistanceSymbols; i++)
+					SymbolCodeLength[i] = DistanceTree + 5;
+				break;
+
+			case 2:
+				int primaryCodes = 257 + ReadBits(5);
+				int codes = PrimarySymbols + 1 + ReadBits(5);
+				if (codes > AllSymbols)
+					throw "Decompression error";
+				int temporaryCodes = ReadBits(4);
+				if (temporaryCodes < 0)
+					throw "Decompression error";
+				temporaryCodes += 4;
+				SymbolCodeLength.Clear();
+				for (int i = 0; i < temporaryCodes; i++) {
+					int bits = ReadBits(3);
+					const byte[] tempSymbols = { 16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15 };
+					SymbolCodeLength[tempSymbols[i]] = bits;
+				}
+				BuildHuffmanTrees();
+				int length = 0;
+				count = 1;
+				for (int i = 0; i < codes; i++) {
+					if (--count == 0) {
+						int symbol = FetchCode(PrimaryTree);
+						switch (symbol) {
+						case 16:
+							count = ReadBits(2) + 3;
+							break;
+						case 17:
+							length = 0;
+							count = ReadBits(3) + 3;
+							break;
+						case 18:
+							length = 0;
+							count = ReadBits(7) + 11;
+							break;
+						default:
+							length = symbol;
+							count = 1;
+							break;
+						}
+					}
+					if (i == primaryCodes)
+						i = PrimarySymbols;
+					SymbolCodeLength[i] = i < PrimarySymbols ? length : DistanceTree + length;
+				}
+				break;
+
+			default:
+				throw "Decompression error";
+			}
+
+			BuildHuffmanTrees();
+			for (;;) {
+				int symbol = FetchCode(PrimaryTree);
+				if (symbol < 256)
+					unpacked[unpackedOffset++] = symbol;
+				else if (symbol == 256)
+					break;
+				else {
+					switch (symbol) {
+					case 257:
+					case 258:
+					case 259:
+					case 260:
+					case 261:
+					case 262:
+					case 263:
+					case 264:
+						count = symbol - 254;
+						break;
+					case 285:
+						count = 258;
+						break;
+					case 286:
+					case 287:
+						throw "Decompression error";
+					default:
+						symbol -= 261;
+						count = ReadBits(symbol >> 2);
+						count += (4 + (symbol & 3) << (symbol >> 2)) + 3;
+						break;
+					}
+
+					symbol = FetchCode(DistanceTree);
+					int distance;
+					switch (symbol) {
+					case PrimarySymbols:
+					case PrimarySymbols + 1:
+					case PrimarySymbols + 2:
+					case PrimarySymbols + 3:
+						distance = symbol - (PrimarySymbols - 1);
+						break;
+					default:
+						symbol -= PrimarySymbols + 2;
+						distance = ReadBits(symbol >> 1);
+						distance += (2 + (symbol & 1) << (symbol >> 1)) + 1;
+						break;
+					}
+
+					if (count > unpackedLength - unpackedOffset)
+						count = unpackedLength - unpackedOffset;
+					if (distance > unpackedOffset)
+						throw "Decompression error";
+					do {
+						unpacked[unpackedOffset] = unpacked[unpackedOffset - distance];
+						unpackedOffset++;
+					} while (--count > 0);
+				}
+				if (unpackedOffset == unpackedLength)
+					return;
+			}
+		} while (lastBlock == 0);
+	}
+
+	void Uncompress(byte[] unpacked, int unpackedLength)
+	{
+		// bits 0 to 3: Compression method (must be Z_DEFLATED)
+		// bits 4 to 7: Compression info (must be <= 7)
+		int b0 = ReadIdatByte();
+		if ((b0 & 0x8f) != 8)
+			throw "Decompression error";
+
+		// bits 0 to 4: Check bits
+		// bit 5:       Preset dictionary (not supported)
+		// bits 6 to 7: Compression level
+		int b1 = ReadIdatByte();
+		if ((b1 & 0x20) != 0 || (b0 << 8 | b1) % 31 != 0)
+			throw "Decompression error";
+
+		Inflate(unpacked, unpackedLength);
+	}
+
+	void Filter(int uncompressedLength, int bytesPerPixel, int bytesPerLine)
+	{
+		int dest = 0;
+		for (int src = 0; src < uncompressedLength; ) {
+			int filter = Result.Pixels[src++];
+			if (filter > 4)
+				throw "Invalid filter";
+			for (int x = 0; x < bytesPerLine; x++) {
+				int value = Result.Pixels[src];
+				switch (filter) {
+				case 0:
+					break;
+				case 1:
+					if (x >= bytesPerPixel)
+						value += Result.Pixels[dest - bytesPerPixel];
+					break;
+				case 2:
+					if (dest >= bytesPerLine) // or pass of an interlaced image
+						value += Result.Pixels[dest - bytesPerLine];
+					break;
+				case 3:
+					int sum = x >= bytesPerPixel ? Result.Pixels[dest - bytesPerPixel] : 0;
+					if (dest >= bytesPerLine)
+						sum += Result.Pixels[dest - bytesPerLine];
+					value += sum >> 1;
+					break;
+				case 4:
+					byte a = x >= bytesPerPixel ? Result.Pixels[dest - bytesPerPixel] : 0;
+					byte b = dest >= bytesPerLine ? Result.Pixels[dest - bytesPerLine] : 0;
+					byte c = x >= bytesPerPixel && dest >= bytesPerLine
+						? Result.Pixels[dest - bytesPerPixel - bytesPerLine] : 0;
+					int pa = Abs(b - c);
+					int pb = Abs(a - c);
+					int pc = Abs(a + b - (c << 1));
+					value += pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+					break;
+				}
+				src++;
+				Result.Pixels[dest++] = value.LowByte;
+			}
+		}
+	}
+
+	override void DoDecode()
+	{
+		if (ReadByte() != 0x89
+		 || ReadByte() != 'P'
+		 || ReadByte() != 'N'
+		 || ReadByte() != 'G'
+		 || ReadByte() != 0x0d
+		 || ReadByte() != 0x0a
+		 || ReadByte() != 0x1a
+		 || ReadByte() != 0x0a)
+			throw "Not a PNG";
+
+		Result.Type = -1;
+		for (;;) {
+			int chunkLength = ReadLong();
+			int chunkType = ReadLong();
+			switch (chunkType) {
+			case ToChunkType("IHDR"):
+				if (Result.Type >= 0 || chunkLength != 13)
+					throw "Invalid header";
+				Result.Width = ReadLong();
+				Result.Height = ReadLong();
+				if (Result.Width <= 0 || Result.Height <= 0)
+					throw "Invalid header";
+				Result.Depth = ReadByte();
+				if (Result.Depth > 16)
+					throw "Invalid header";
+				Result.Type = ReadByte(); // color type 1=palette, 2=color, 4=alpha
+				if (Result.Type > 6)
+					throw "Invalid header";
+				const int[7] validDepths = {
+					0x10116, // 0: grayscale: 1, 2, 4, 8, 16
+					0x00000, // 1: invalid
+					0x10100, // 2: RGB: 8, 16
+					0x00116, // 3: indexed: 1, 2, 4, 8
+					0x10100, // 4: grayscale+alpha: 8, 16
+					0x00000, // 5: invalid
+					0x10100  // 6: RGBA: 8,16
+				};
+				if ((validDepths[Result.Type] & 1 << Result.Depth) == 0)
+					throw "Invalid header";
+				if (ReadByte() != 0)
+					throw "Invalid compression";
+				if (ReadByte() != 0)
+					throw "Invalid filter";
+				if (ReadByte() != 0)
+					throw "Interlace not supported";
+				break;
+
+			case ToChunkType("PLTE"):
+				if (chunkLength % 3 != 0)
+					throw "Invalid palette";
+				ReadRgbPalette(chunkLength / 3);
+				break;
+
+			case ToChunkType("IDAT"):
+				if (Result.Type < 0)
+					throw "Invalid header";
+				ChunkRemaining = chunkLength;
+				const byte[7] channels = { 1, 0, 3, 1, 2, 0, 4 };
+				int bitsPerPixel = channels[Result.Type] * Result.Depth;
+				int bytesPerLine = Result.Width * bitsPerPixel + 7 >> 3;
+				int uncompressedLength = (1 + bytesPerLine) * Result.Height;
+				Result.Pixels = new byte[uncompressedLength];
+				Uncompress(Result.Pixels, uncompressedLength);
+				Filter(uncompressedLength, bitsPerPixel <= 8 ? 1 : bitsPerPixel >> 3, bytesPerLine);
+				return;
+
+			default:
+				if ((chunkType & 1 << 29) == 0)
+					throw "Unknown chunk";
+				for (int i = 0; i < chunkLength; i++)
+					ReadByte();
+				break;
+			}
+			ReadLong(); // CRC
+		}
+	}
+
+}

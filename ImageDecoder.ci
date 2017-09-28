@@ -1,0 +1,44 @@
+public abstract class ImageDecoder
+{
+	byte[] Input;
+	int InputLength;
+	int InputOffset;
+	Image Result;
+
+	int ReadByte()
+	{
+		if (InputOffset >= InputLength)
+			throw "Unexpected EOF";
+		return Input[InputOffset++];
+	}
+
+	void ReadRgbPalette(int colors)
+	{
+		for (int i = 0; i < colors; i++) {
+			int r = ReadByte();
+			int g = ReadByte();
+			int b = ReadByte();
+			Result.Palette[i] = 0xff << 24 | r << 16 | g << 8 | b;
+		}
+	}
+
+	abstract void DoDecode();
+
+	/// Decodes a bitmap stream passed as a byte array.
+	/// Throws an exception on error.
+	public void Decode(
+		/// The result.
+		Image result,
+		/// The content of the stream.
+		byte[] input,
+		/// The length of the stream.
+		int inputLength)
+	{
+		result.Pixels = null;
+		Result = result;
+		Input = input;
+		InputLength = inputLength;
+		InputOffset = 0;
+		DoDecode();
+	}
+}
