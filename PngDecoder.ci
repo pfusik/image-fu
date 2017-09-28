@@ -102,13 +102,11 @@ public class PngDecoder : ImageDecoder
 			case 0:
 				Bits = 0;
 				count = ReadBits(16);
-				if (ReadBits(16) != (count ^ 0xffff))
+				if (unpackedOffset + count > unpackedLength
+				 || ReadBits(16) != (count ^ 0xffff))
 					throw "Decompression error";
-				while (--count >= 0) {
+				while (--count >= 0)
 					unpacked[unpackedOffset++] = ReadIdatByte();
-					if (unpackedOffset == unpackedLength)
-						return;
-				}
 				continue;
 
 			case 1:
@@ -176,10 +174,12 @@ public class PngDecoder : ImageDecoder
 			BuildHuffmanTrees();
 			for (;;) {
 				int symbol = FetchCode(PrimaryTree);
+				if (symbol == 256)
+					break;
+				if (unpackedOffset >= unpackedLength)
+					throw "Decompression error";
 				if (symbol < 256)
 					unpacked[unpackedOffset++] = symbol;
-				else if (symbol == 256)
-					break;
 				else {
 					switch (symbol) {
 					case 257:
@@ -221,19 +221,18 @@ public class PngDecoder : ImageDecoder
 						break;
 					}
 
-					if (count > unpackedLength - unpackedOffset)
-						count = unpackedLength - unpackedOffset;
-					if (distance > unpackedOffset)
+					if (unpackedOffset + count > unpackedLength
+					 || distance > unpackedOffset)
 						throw "Decompression error";
 					do {
 						unpacked[unpackedOffset] = unpacked[unpackedOffset - distance];
 						unpackedOffset++;
 					} while (--count > 0);
 				}
-				if (unpackedOffset == unpackedLength)
-					return;
 			}
 		} while (lastBlock == 0);
+		if (unpackedOffset != unpackedLength)
+			throw "Decompression error";
 	}
 
 	void Uncompress(byte[] unpacked, int unpackedLength)
