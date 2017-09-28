@@ -30,7 +30,7 @@ public class Image
 			case 1:
 				b = Pixels[y * (Width + 7 >> 3) + (x >> 3)] >> (~x & 7) & 1;
 				if (b != 0)
-					b = 0xffffff;
+					b = 0xff;
 				break;
 			case 2:
 				b = Pixels[y * (Width + 3 >> 2) + (x >> 2)] >> ((~x & 3) << 1) & 3;
