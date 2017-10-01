@@ -346,7 +346,7 @@ public class PngDecoder : ImageDecoder
 				break;
 
 			case ToChunkType("PLTE"):
-				if (chunkLength % 3 != 0)
+				if (chunkLength % 3 != 0 || chunkLength > 256 * 3)
 					throw "Invalid palette";
 				ReadRgbPalette(chunkLength / 3);
 				break;
