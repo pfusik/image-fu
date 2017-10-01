@@ -343,12 +343,42 @@ public class PngDecoder : ImageDecoder
 					throw "Invalid filter";
 				if (ReadByte() != 0)
 					throw "Interlace not supported";
+				Result.TransparentColor = -1;
 				break;
 
 			case ToChunkType("PLTE"):
 				if (chunkLength % 3 != 0 || chunkLength > 256 * 3)
 					throw "Invalid palette";
 				ReadRgbPalette(chunkLength / 3);
+				break;
+
+			case ToChunkType("tRNS"):
+				switch (Result.Type) {
+				case 0: // grayscale
+					if (chunkLength != 2)
+						throw "Invalid transparency";
+					int hi = ReadByte();
+					Result.TransparentColor = hi << 8 | ReadByte();
+					break;
+				case 2: // RGB
+					if (chunkLength != 6)
+						throw "Invalid transparency";
+					Result.TransparentColor = 0;
+					Result.TransparentColorHi = 0;
+					for (int i = 0; i < 3; i++) {
+						Result.TransparentColorHi = Result.TransparentColorHi << 8 | ReadByte();
+						Result.TransparentColor = Result.TransparentColor << 8 | ReadByte();
+					}
+					break;
+				case 3: // indexed
+					if (chunkLength > 256)
+						throw "Invalid transparency";
+					for (int i = 0; i < chunkLength; i++)
+						Result.Palette[i] &= ReadByte() << 24 | 0xffffff;
+					break;
+				default:
+					throw "Invalid transparency";
+				}
 				break;
 
 			case ToChunkType("IDAT"):

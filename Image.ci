@@ -7,6 +7,8 @@ public class Image
 	int Depth;
 	int[256] Palette;
 	byte[] Pixels;
+	int TransparentColor;
+	int TransparentColorHi;
 
 	/// Returns image width.
 	public int GetWidth()
@@ -26,39 +28,55 @@ public class Image
 		switch (Type) {
 
 		case 0: // grayscale
+			int rgb;
 			switch (Depth) {
 			case 1:
 				b = Pixels[y * (Width + 7 >> 3) + (x >> 3)] >> (~x & 7) & 1;
-				if (b != 0)
-					b = 0xff;
+				rgb = b * 0xffffff;
 				break;
 			case 2:
 				b = Pixels[y * (Width + 3 >> 2) + (x >> 2)] >> ((~x & 3) << 1) & 3;
-				b *= 0x55;
+				rgb = b * 0x555555;
 				break;
 			case 4:
 				b = Pixels[y * (Width + 1 >> 1) + (x >> 1)];
 				b = (x & 1) == 0 ? b >> 4 : b & 15;
-				b *= 0x11;
+				rgb = b * 0x111111;
 				break;
 			case 8:
 				b = Pixels[y * Width + x];
+				rgb = b * 0x010101;
 				break;
 			case 16:
 				b = Pixels[y * Width + x << 1];
+				rgb = b * 0x010101;
+				b = b << 8 | Pixels[y * Width + x << 1 | 1];
 				break;
 			default:
 				return 0;
 			}
-			return 0xff << 24 | b * 0x010101;
+			if (b != TransparentColor)
+				rgb |= 0xff << 24;
+			return rgb;
 
 		case 2: // RGB
-			bytesPerComponent = Depth >> 3;
-			offset = (y * Width + x) * (3 * bytesPerComponent);
-			return 0xff << 24
-			     | Pixels[offset] << 16
-			     | Pixels[offset + bytesPerComponent] << 8
-			     | Pixels[offset + 2 * bytesPerComponent];
+			switch (Depth) {
+			case 8:
+				offset = (y * Width + x) * 3;
+				rgb = Pixels[offset] << 16 | Pixels[offset + 1] << 8 | Pixels[offset + 2];
+				if (rgb != TransparentColor)
+					rgb |= 0xff << 24;
+				return rgb;
+			case 16:
+				offset = (y * Width + x) * 6;
+				rgb = Pixels[offset] << 16 | Pixels[offset + 2] << 8 | Pixels[offset + 4];
+				if (rgb != TransparentColorHi
+				 || (Pixels[offset + 1] << 16 | Pixels[offset + 3] << 8 | Pixels[offset + 5]) != TransparentColor)
+					rgb |= 0xff << 24;
+				return rgb;
+			default:
+				return 0;
+			}
 
 		case 3: // indexed
 			switch (Depth) {
