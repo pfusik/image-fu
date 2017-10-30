@@ -134,6 +134,7 @@ public class GifDecoder : ImageDecoder
 		int pixelsLength = Result.Width * Result.Height;
 		Result.Depth = 8;
 		Result.Type = 3; // indexed
+		Result.Adam7Interlace = false;
 		Result.Pixels = new byte[pixelsLength];
 		int literalCodes = 1 << literalBits;
 		int codes = literalCodes + 2;
