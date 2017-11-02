@@ -1,0 +1,209 @@
+class JpegHuffmanTable
+{
+	byte[16] NBitCodeCount;
+	byte[256] Symbols;
+}
+
+/// Decoder of the JPEG  bitmap format.
+public class JpegDecoder : ImageDecoder
+{
+	int ReadWord()
+	{
+		int hi = ReadByte();
+		return hi << 8 | ReadByte();
+	}
+
+	void SkipBytes(int length)
+	{
+		while (--length >= 0)
+			ReadByte();
+	}
+
+	void ReadBytes(byte[] result, int length)
+	{
+		for (int i = 0; i < length; i++)
+			result[i] = ReadByte();
+	}
+
+	int Bits;
+
+	int ReadBit()
+	{
+		if ((Bits & 0x7f) == 0) {
+			int value = ReadByte();
+			if (value == 0xff && ReadByte() != 0)
+				throw "Expected FF 00";
+			Bits = value << 1 | 1;
+		}
+		else
+			Bits <<= 1;
+		return Bits >> 8 & 1;
+	}
+
+	int ReadSignedBits(int n)
+	{
+		if (n == 0)
+			return 0;
+		int result = ReadBit();
+		if (result == 0)
+			result = -2;
+		while (--n > 0)
+			result = result << 1 | ReadBit();
+		if (result < 0)
+			result++;
+		return result;
+	}
+	
+
+	int ReadCode(JpegHuffmanTable table)
+	{
+		int offset = 0;
+		int code = 0;
+		for (int bits = 1; bits <= 16; bits++) {
+			code += ReadBit();
+			int n = table.NBitCodeCount[bits - 1];
+			if (code < n)
+				return table.Symbols[offset + code];
+			offset += n;
+			code = code - n << 1;
+		}
+		throw "Unassigned code";
+	}
+
+	override void DoDecode()
+	{
+		if (ReadByte() != 0xff || ReadByte() != 0xd8)
+			throw "Not a JPEG";
+		byte[4][64] quantizationTables;
+		byte[] yQuantizationTable = null;
+		JpegHuffmanTable()[4] dcHuffmanTables;
+		JpegHuffmanTable()[4] acHuffmanTables;
+		native {
+			// workaround a cito 0 bug
+			for (var i = 0; i < 4; i++) {
+				quantizationTables[i] = new Uint8Array(new ArrayBuffer(64));
+				dcHuffmanTables[i] = new JpegHuffmanTable();
+				acHuffmanTables[i] = new JpegHuffmanTable();
+			}
+		}
+		int yComponent;
+		JpegHuffmanTable[4] componentDcHuffmanTables;
+		JpegHuffmanTable[4] componentAcHuffmanTables;
+		while (ReadByte() == 0xff) {
+			int code = ReadByte();
+			int length = ReadWord();
+			if (length < 2)
+				throw "Invalid segment length";
+			switch (code) {
+
+			case 0xc0: // BaselineDCT
+				if (ReadByte() != 8)
+					throw "Only 8-bit depth supported";
+				Result.Height = ReadWord() + 7 >> 3; // TODO: DC only for now
+				Result.Width = ReadWord() + 7 >> 3;
+				int components = ReadByte();
+				if (length != 2 + 1 + 2 + 2 + 1 + components * 3)
+					throw "Invalid segment length";
+				for (int i = 0; i < components; i++) {
+					int type = ReadByte();
+					int samplingFactor = ReadByte(); // TODO
+					int quantizationId = ReadByte();
+					if (quantizationId > 3)
+						throw "Invalid quantization table";
+					if (type == 1)
+						yQuantizationTable = quantizationTables[quantizationId];
+				}
+				break;
+
+			case 0xc4: // Define Huffman Tables
+				while (length >= 2 + 1 + 16) {
+					int id = ReadByte();
+					JpegHuffmanTable huffmanTable;
+					if (id < 4)
+						huffmanTable = dcHuffmanTables[id];
+					else if ((id & 0xec) == 0)
+						huffmanTable = acHuffmanTables[id & 3];
+					else
+						throw "Invalid DHT";
+					int symbolCount = 0;
+					for (int i = 0; i < 16; i++)
+						symbolCount += huffmanTable.NBitCodeCount[i] = ReadByte();
+					if (symbolCount > 256)
+						throw "Invalid DHT";
+					ReadBytes(huffmanTable.Symbols, symbolCount);
+					length -= 1 + 16 + symbolCount;
+				}
+				if (length != 2)
+					throw "Invalid DHT";
+				break;
+
+			case 0xdb: // Define Quantization Tables
+				for (; length >= 2 + 1 + 64; length -= 1 + 64) {
+					int id = ReadByte();
+					if (id > 3)
+						throw "Invalid DQT";
+					ReadBytes(quantizationTables[id], 64);
+				}
+				if (length != 2)
+					throw "Invalid DQT";
+				break;
+
+			case 0xda: // Start Of Scan
+				if (yQuantizationTable == null)
+					throw "Missing BaselineDCT";
+				components = ReadByte();
+				if (components > 4)
+					throw "Too many components";
+				if (length != 2 + 1 + components * 2 + 3)
+					throw "Invalid segment length";
+				for (int i = 0; i < components; i++) {
+					if (ReadByte() == 1)
+						yComponent = i;
+					int huffmanIds = ReadByte();
+					if ((huffmanIds & 0xcc) != 0)
+						throw "Invalid Huffman table";
+					componentDcHuffmanTables[i] = dcHuffmanTables[huffmanIds >> 4];
+					componentAcHuffmanTables[i] = acHuffmanTables[huffmanIds & 3];
+				}
+				SkipBytes(3);
+
+				Bits = 0;
+				Result.Pixels = new byte[Result.Height * Result.Width];
+				int yDc = 0;
+				for (int y = 0; y < Result.Height; y++) {
+					for (int x = 0; x < Result.Width; x++) {
+						for (int c = 0; c < components; c++) {
+							code = ReadCode(componentDcHuffmanTables[c]);
+							if (code > 11)
+								throw "Invalid DC code";
+							int delta = ReadSignedBits(code);
+							if (c == yComponent) {
+								yDc += delta;
+								Result.Pixels[y * Result.Width + x] = 128 + (yDc * yQuantizationTable[0] >> 3);
+							}
+							for (int i = 1; i < 64; i++) {
+								code = ReadCode(componentAcHuffmanTables[c]);
+								if (code == 0)
+									break;
+								i += code >> 4;
+								if (i >= 64)
+									throw "Invalid AC code";
+								ReadSignedBits(code & 0xf);
+							}
+						}
+					}
+				}
+				Result.Type = 0;
+				Result.Depth = 8;
+				Result.Adam7Interlace = false;
+				Result.TransparentColor = -1;
+				return;
+
+			default: // ignore
+				SkipBytes(length - 2);
+				break;
+			}
+		}
+		throw "Not a JPEG";
+	}
+}

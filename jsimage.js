@@ -3,14 +3,21 @@ function image2canvas(input)
 	var image = new Image();
 	try {
 		if (input.length == 0)
-			throw "Not a PNG or GIF";
+			throw "Not a JPEG, PNG or GIF";
 		var decoder;
-		if (input[0] == 0x89)
-			decoder = new PngDecoder();
-		else if (input[0] == 0x47)
+		switch (input[0]) {
+		case 0x47:
 			decoder = new GifDecoder();
-		else
-			throw "Not a PNG or GIF";
+			break;
+		case 0x89:
+			decoder = new PngDecoder();
+			break;
+		case 0xff:
+			decoder = new JpegDecoder();
+			break;
+		default:
+			throw "Not a JPEG, PNG or GIF";
+		}
 		decoder.decode(image, input, input.length);
 	} catch (e) {
 		alert(e);
