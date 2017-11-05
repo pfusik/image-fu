@@ -76,6 +76,10 @@ public class JpegDecoder : ImageDecoder
 			throw "Not a JPEG";
 		byte[4][64] quantizationTables;
 		byte[] yQuantizationTable = null;
+		int mcuWidth = 1;
+		int mcuHeight = 1;
+		byte[4] samplingHs;
+		byte[4] samplingVs;
 		JpegHuffmanTable()[4] dcHuffmanTables;
 		JpegHuffmanTable()[4] acHuffmanTables;
 		native {
@@ -102,11 +106,25 @@ public class JpegDecoder : ImageDecoder
 				Result.Height = ReadWord() + 7 >> 3; // TODO: DC only for now
 				Result.Width = ReadWord() + 7 >> 3;
 				int components = ReadByte();
+				if (components == 0 || components > 4)
+					throw "Invalid BaselineDCT";
 				if (length != 2 + 1 + 2 + 2 + 1 + components * 3)
 					throw "Invalid segment length";
 				for (int i = 0; i < components; i++) {
 					int type = ReadByte();
-					int samplingFactor = ReadByte(); // TODO
+					int samplingFactor = ReadByte();
+					int samplingH = samplingFactor >> 4;
+					if (samplingH == 0 || samplingH > 4)
+						throw "Invalid sampling factor";
+					int samplingV = samplingFactor & 0xf;
+					if (samplingV == 0 || samplingV > 4)
+						throw "Invalid sampling factor";
+					if (mcuWidth < samplingH)
+						mcuWidth = samplingH;
+					samplingHs[i] = samplingH;
+					if (mcuHeight < samplingV)
+						mcuHeight = samplingV;
+					samplingVs[i] = samplingV;
 					int quantizationId = ReadByte();
 					if (quantizationId > 3)
 						throw "Invalid quantization table";
@@ -170,25 +188,29 @@ public class JpegDecoder : ImageDecoder
 				Bits = 0;
 				Result.Pixels = new byte[Result.Height * Result.Width];
 				int yDc = 0;
-				for (int y = 0; y < Result.Height; y++) {
-					for (int x = 0; x < Result.Width; x++) {
+				for (int y = 0; y < Result.Height; y += mcuHeight) {
+					for (int x = 0; x < Result.Width; x += mcuWidth) {
 						for (int c = 0; c < components; c++) {
-							code = ReadCode(componentDcHuffmanTables[c]);
-							if (code > 11)
-								throw "Invalid DC code";
-							int delta = ReadSignedBits(code);
-							if (c == yComponent) {
-								yDc += delta;
-								Result.Pixels[y * Result.Width + x] = 128 + (yDc * yQuantizationTable[0] >> 3);
-							}
-							for (int i = 1; i < 64; i++) {
-								code = ReadCode(componentAcHuffmanTables[c]);
-								if (code == 0)
-									break;
-								i += code >> 4;
-								if (i >= 64)
-									throw "Invalid AC code";
-								ReadSignedBits(code & 0xf);
+							for (int v = 0; v < samplingVs[c]; v++) {
+								for (int h = 0; h < samplingHs[c]; h++) {
+									code = ReadCode(componentDcHuffmanTables[c]);
+									if (code > 11)
+										throw "Invalid DC code";
+									int delta = ReadSignedBits(code);
+									if (c == yComponent) {
+										yDc += delta;
+										Result.Pixels[(y + v) * Result.Width + x + h] = 128 + (yDc * yQuantizationTable[0] >> 3);
+									}
+									for (int i = 1; i < 64; i++) {
+										code = ReadCode(componentAcHuffmanTables[c]);
+										if (code == 0)
+											break;
+										i += code >> 4;
+										if (i >= 64)
+											throw "Invalid AC code";
+										ReadSignedBits(code & 0xf);
+									}
+								}
 							}
 						}
 					}
