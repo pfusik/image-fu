@@ -93,6 +93,9 @@ public class JpegDecoder : ImageDecoder
 		int yComponent;
 		JpegHuffmanTable[4] componentDcHuffmanTables;
 		JpegHuffmanTable[4] componentAcHuffmanTables;
+		int restartInterval = 0;
+		int restartIntervalCounter = 0;
+		int restartMarker = 0;
 		while (ReadByte() == 0xff) {
 			int code = ReadByte();
 			int length = ReadWord();
@@ -166,6 +169,13 @@ public class JpegDecoder : ImageDecoder
 					throw "Invalid DQT";
 				break;
 
+			case 0xdd: // Define Restart Interval
+				if (length != 4)
+					throw "Invalid DRI";
+				restartInterval = ReadWord();
+				restartIntervalCounter = restartInterval + 1;
+				break;
+
 			case 0xda: // Start Of Scan
 				if (yQuantizationTable == null)
 					throw "Missing BaselineDCT";
@@ -190,6 +200,14 @@ public class JpegDecoder : ImageDecoder
 				int yDc = 0;
 				for (int y = 0; y < Result.Height; y += mcuHeight) {
 					for (int x = 0; x < Result.Width; x += mcuWidth) {
+						if (restartInterval > 0 && --restartIntervalCounter == 0) {
+							restartIntervalCounter = restartInterval;
+							if (ReadByte() != 0xff || ReadByte() != 0xd0 + restartMarker)
+								throw "Expected Restart Marker";
+							restartMarker = restartMarker + 1 & 7;
+							Bits = 0;
+							yDc = 0;
+						}
 						for (int c = 0; c < components; c++) {
 							for (int v = 0; v < samplingVs[c]; v++) {
 								for (int h = 0; h < samplingHs[c]; h++) {
