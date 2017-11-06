@@ -103,14 +103,16 @@ public class JpegDecoder : ImageDecoder
 				throw "Invalid segment length";
 			switch (code) {
 
-			case 0xc0: // BaselineDCT
+			case 0xc0: // Baseline DCT
+			case 0xc1: // Extended sequential DCT
+			case 0xc2: // Progressive DCT
 				if (ReadByte() != 8)
 					throw "Only 8-bit depth supported";
 				Result.Height = ReadWord() + 7 >> 3; // TODO: DC only for now
 				Result.Width = ReadWord() + 7 >> 3;
 				int components = ReadByte();
 				if (components == 0 || components > 4)
-					throw "Invalid BaselineDCT";
+					throw "Invalid DCT";
 				if (length != 2 + 1 + 2 + 2 + 1 + components * 3)
 					throw "Invalid segment length";
 				for (int i = 0; i < components; i++) {
@@ -178,7 +180,7 @@ public class JpegDecoder : ImageDecoder
 
 			case 0xda: // Start Of Scan
 				if (yQuantizationTable == null)
-					throw "Missing BaselineDCT";
+					throw "Missing DCT";
 				components = ReadByte();
 				if (components > 4)
 					throw "Too many components";
@@ -193,7 +195,14 @@ public class JpegDecoder : ImageDecoder
 					componentDcHuffmanTables[i] = dcHuffmanTables[huffmanIds >> 4];
 					componentAcHuffmanTables[i] = acHuffmanTables[huffmanIds & 3];
 				}
-				SkipBytes(3);
+				if (ReadByte() != 0)
+					throw "Invalid SOS";
+				int lastCoefficient = ReadByte();
+				if (lastCoefficient > 63)
+					throw "Invalid SOS";
+				int bitPosition = ReadByte();
+				if (bitPosition > 1) // TODO?
+					throw "Invalid SOS";
 
 				Bits = 0;
 				Result.Pixels = new byte[Result.Height * Result.Width];
@@ -217,14 +226,14 @@ public class JpegDecoder : ImageDecoder
 									int delta = ReadSignedBits(code);
 									if (c == yComponent) {
 										yDc += delta;
-										Result.Pixels[(y + v) * Result.Width + x + h] = 128 + (yDc * yQuantizationTable[0] >> 3);
+										Result.Pixels[(y + v) * Result.Width + x + h] = 128 + (yDc * yQuantizationTable[0] >> 3 - bitPosition);
 									}
-									for (int i = 1; i < 64; i++) {
+									for (int i = 1; i <= lastCoefficient; i++) {
 										code = ReadCode(componentAcHuffmanTables[c]);
 										if (code == 0)
 											break;
 										i += code >> 4;
-										if (i >= 64)
+										if (i > lastCoefficient)
 											throw "Invalid AC code";
 										ReadSignedBits(code & 0xf);
 									}
