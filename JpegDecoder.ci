@@ -19,6 +19,14 @@ public class JpegDecoder : ImageDecoder
 			ReadByte();
 	}
 
+	int ReadComponents()
+	{
+		int components = ReadByte();
+		if (components != 1 && components != 3)
+			throw "Expected 1 or 3 components";
+		return components;
+	}
+
 	void ReadBytes(byte[] result, int length)
 	{
 		for (int i = 0; i < length; i++)
@@ -78,8 +86,8 @@ public class JpegDecoder : ImageDecoder
 		byte[] yQuantizationTable = null;
 		int mcuWidth = 1;
 		int mcuHeight = 1;
-		byte[4] samplingHs;
-		byte[4] samplingVs;
+		byte[3] samplingHs;
+		byte[3] samplingVs;
 		JpegHuffmanTable()[4] dcHuffmanTables;
 		JpegHuffmanTable()[4] acHuffmanTables;
 		native {
@@ -90,9 +98,8 @@ public class JpegDecoder : ImageDecoder
 				acHuffmanTables[i] = new JpegHuffmanTable();
 			}
 		}
-		int yComponent;
-		JpegHuffmanTable[4] componentDcHuffmanTables;
-		JpegHuffmanTable[4] componentAcHuffmanTables;
+		JpegHuffmanTable[3] componentDcHuffmanTables;
+		JpegHuffmanTable[3] componentAcHuffmanTables;
 		int restartInterval = 0;
 		int restartIntervalCounter = 0;
 		int restartMarker = 0;
@@ -110,9 +117,7 @@ public class JpegDecoder : ImageDecoder
 					throw "Only 8-bit depth supported";
 				Result.Height = ReadWord() + 7 >> 3; // TODO: DC only for now
 				Result.Width = ReadWord() + 7 >> 3;
-				int components = ReadByte();
-				if (components == 0 || components > 4)
-					throw "Invalid DCT";
+				int components = ReadComponents();
 				if (length != 2 + 1 + 2 + 2 + 1 + components * 3)
 					throw "Invalid segment length";
 				for (int i = 0; i < components; i++) {
@@ -181,14 +186,12 @@ public class JpegDecoder : ImageDecoder
 			case 0xda: // Start Of Scan
 				if (yQuantizationTable == null)
 					throw "Missing DCT";
-				components = ReadByte();
-				if (components > 4)
-					throw "Too many components";
+				components = ReadComponents();
 				if (length != 2 + 1 + components * 2 + 3)
 					throw "Invalid segment length";
 				for (int i = 0; i < components; i++) {
-					if (ReadByte() == 1)
-						yComponent = i;
+					if (ReadByte() != 1 + i)
+						throw "Invalid component";
 					int huffmanIds = ReadByte();
 					if ((huffmanIds & 0xcc) != 0)
 						throw "Invalid Huffman table";
@@ -224,7 +227,7 @@ public class JpegDecoder : ImageDecoder
 									if (code > 11)
 										throw "Invalid DC code";
 									int delta = ReadSignedBits(code);
-									if (c == yComponent) {
+									if (c == 0) {
 										yDc += delta;
 										Result.Pixels[(y + v) * Result.Width + x + h] = 128 + (yDc * yQuantizationTable[0] >> 3 - bitPosition);
 									}
