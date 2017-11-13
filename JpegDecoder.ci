@@ -19,14 +19,6 @@ public class JpegDecoder : ImageDecoder
 			ReadByte();
 	}
 
-	int ReadComponents()
-	{
-		int components = ReadByte();
-		if (components != 1 && components != 3)
-			throw "Expected 1 or 3 components";
-		return components;
-	}
-
 	void ReadBytes(byte[] result, int length)
 	{
 		for (int i = 0; i < length; i++)
@@ -78,16 +70,31 @@ public class JpegDecoder : ImageDecoder
 		throw "Unassigned code";
 	}
 
+	int ReadBlock(JpegHuffmanTable dcTable, JpegHuffmanTable acTable, int lastCoefficient)
+	{
+		int code = ReadCode(dcTable);
+		if (code > 11)
+			throw "Invalid DC code";
+		int dcDelta = ReadSignedBits(code);
+		for (int i = 1; i <= lastCoefficient; i++) {
+			code = ReadCode(acTable);
+			if (code == 0)
+				break;
+			i += code >> 4;
+			if (i > lastCoefficient)
+				throw "Invalid AC code";
+			ReadSignedBits(code & 0xf);
+		}
+		return dcDelta;
+	}
+
 	override void DoDecode()
 	{
 		if (ReadByte() != 0xff || ReadByte() != 0xd8)
 			throw "Not a JPEG";
+		int components = 0;
 		byte[4][64] quantizationTables;
-		byte[] yQuantizationTable = null;
-		int mcuWidth = 1;
-		int mcuHeight = 1;
-		byte[3] samplingHs;
-		byte[3] samplingVs;
+		byte[3][] componentQuantizationTables;
 		JpegHuffmanTable()[4] dcHuffmanTables;
 		JpegHuffmanTable()[4] acHuffmanTables;
 		native {
@@ -101,8 +108,6 @@ public class JpegDecoder : ImageDecoder
 		JpegHuffmanTable[3] componentDcHuffmanTables;
 		JpegHuffmanTable[3] componentAcHuffmanTables;
 		int restartInterval = 0;
-		int restartIntervalCounter = 0;
-		int restartMarker = 0;
 		while (ReadByte() == 0xff) {
 			int code = ReadByte();
 			int length = ReadWord();
@@ -117,29 +122,29 @@ public class JpegDecoder : ImageDecoder
 					throw "Only 8-bit depth supported";
 				Result.Height = ReadWord() + 7 >> 3; // TODO: DC only for now
 				Result.Width = ReadWord() + 7 >> 3;
-				int components = ReadComponents();
+				components = ReadByte();
+				if (components != 1 && components != 3)
+					throw "Expected 1 or 3 components";
 				if (length != 2 + 1 + 2 + 2 + 1 + components * 3)
 					throw "Invalid segment length";
 				for (int i = 0; i < components; i++) {
-					int type = ReadByte();
+					if (ReadByte() != 1 + i)
+						throw "Invalid component";
 					int samplingFactor = ReadByte();
-					int samplingH = samplingFactor >> 4;
-					if (samplingH == 0 || samplingH > 4)
+					if (i == 0) {
+						Result.ColorSamplingH = samplingFactor >> 4;
+						if (Result.ColorSamplingH == 0 || Result.ColorSamplingH > 4)
+							throw "Invalid sampling factor";
+						Result.ColorSamplingV = samplingFactor & 0xf;
+						if (Result.ColorSamplingV == 0 || Result.ColorSamplingV > 4)
+							throw "Invalid sampling factor";
+					}
+					else if (samplingFactor != 0x11)
 						throw "Invalid sampling factor";
-					int samplingV = samplingFactor & 0xf;
-					if (samplingV == 0 || samplingV > 4)
-						throw "Invalid sampling factor";
-					if (mcuWidth < samplingH)
-						mcuWidth = samplingH;
-					samplingHs[i] = samplingH;
-					if (mcuHeight < samplingV)
-						mcuHeight = samplingV;
-					samplingVs[i] = samplingV;
 					int quantizationId = ReadByte();
 					if (quantizationId > 3)
 						throw "Invalid quantization table";
-					if (type == 1)
-						yQuantizationTable = quantizationTables[quantizationId];
+					componentQuantizationTables[i] = quantizationTables[quantizationId];
 				}
 				break;
 
@@ -180,13 +185,11 @@ public class JpegDecoder : ImageDecoder
 				if (length != 4)
 					throw "Invalid DRI";
 				restartInterval = ReadWord();
-				restartIntervalCounter = restartInterval + 1;
 				break;
 
 			case 0xda: // Start Of Scan
-				if (yQuantizationTable == null)
-					throw "Missing DCT";
-				components = ReadComponents();
+				if (ReadByte() != components)
+					throw "Invalid components (non-interleaved?)";
 				if (length != 2 + 1 + components * 2 + 3)
 					throw "Invalid segment length";
 				for (int i = 0; i < components; i++) {
@@ -208,44 +211,38 @@ public class JpegDecoder : ImageDecoder
 					throw "Invalid SOS";
 
 				Bits = 0;
-				Result.Pixels = new byte[Result.Height * Result.Width];
-				int yDc = 0;
-				for (int y = 0; y < Result.Height; y += mcuHeight) {
-					for (int x = 0; x < Result.Width; x += mcuWidth) {
+				int yLength = Result.Height * Result.Width;
+				int colorLength = components == 3 ? Result.GetColorHeight() * Result.GetColorWidth() : 0;
+				Result.Pixels = new byte[yLength + (colorLength << 1)];
+				int restartIntervalCounter = restartInterval + 1;
+				int restartMarker = 0;
+				int[3] dcs = 0;
+				for (int y = 0; y < Result.Height; y += Result.ColorSamplingV) {
+					for (int x = 0; x < Result.Width; x += Result.ColorSamplingH) {
 						if (restartInterval > 0 && --restartIntervalCounter == 0) {
 							restartIntervalCounter = restartInterval;
 							if (ReadByte() != 0xff || ReadByte() != 0xd0 + restartMarker)
 								throw "Expected Restart Marker";
 							restartMarker = restartMarker + 1 & 7;
 							Bits = 0;
-							yDc = 0;
+							dcs.Clear();
 						}
-						for (int c = 0; c < components; c++) {
-							for (int v = 0; v < samplingVs[c]; v++) {
-								for (int h = 0; h < samplingHs[c]; h++) {
-									code = ReadCode(componentDcHuffmanTables[c]);
-									if (code > 11)
-										throw "Invalid DC code";
-									int delta = ReadSignedBits(code);
-									if (c == 0) {
-										yDc += delta;
-										Result.Pixels[(y + v) * Result.Width + x + h] = 128 + (yDc * yQuantizationTable[0] >> 3 - bitPosition);
-									}
-									for (int i = 1; i <= lastCoefficient; i++) {
-										code = ReadCode(componentAcHuffmanTables[c]);
-										if (code == 0)
-											break;
-										i += code >> 4;
-										if (i > lastCoefficient)
-											throw "Invalid AC code";
-										ReadSignedBits(code & 0xf);
-									}
-								}
+						for (int v = 0; v < Result.ColorSamplingV; v++) {
+							for (int h = 0; h < Result.ColorSamplingH; h++) {
+								dcs[0] += ReadBlock(componentDcHuffmanTables[0], componentAcHuffmanTables[0], lastCoefficient) * componentQuantizationTables[0][0];
+								Result.Pixels[(y + v) * Result.Width + x + h] = 128 + (dcs[0] >> 3 - bitPosition);
 							}
+						}
+						if (components == 3) {
+							for (int c = 1; c < 3; c++)
+								dcs[c] += ReadBlock(componentDcHuffmanTables[c], componentAcHuffmanTables[c], lastCoefficient) * componentQuantizationTables[c][0];
+							int offset = yLength + y / Result.ColorSamplingV * Result.GetColorWidth() + x / Result.ColorSamplingH;
+							Result.Pixels[offset] = 128 + (dcs[1] >> 3 - bitPosition);
+							Result.Pixels[offset + colorLength] = 128 + (dcs[2] >> 3 - bitPosition);
 						}
 					}
 				}
-				Result.Type = 0;
+				Result.Type = components == 3 ? Image.TypeYCbCr : 0;
 				Result.Depth = 8;
 				Result.Adam7Interlace = false;
 				Result.TransparentColor = -1;
