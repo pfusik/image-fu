@@ -88,6 +88,9 @@ public class JpegDecoder : ImageDecoder
 		return dcDelta;
 	}
 
+#if CI1
+	protected
+#endif
 	override void DoDecode()
 	{
 		if (ReadByte() != 0xff || ReadByte() != 0xd8)
@@ -97,6 +100,7 @@ public class JpegDecoder : ImageDecoder
 		byte[3][] componentQuantizationTables;
 		JpegHuffmanTable()[4] dcHuffmanTables;
 		JpegHuffmanTable()[4] acHuffmanTables;
+#if !CI1
 		native {
 			// workaround a cito 0 bug
 			for (var i = 0; i < 4; i++) {
@@ -105,6 +109,7 @@ public class JpegDecoder : ImageDecoder
 				acHuffmanTables[i] = new JpegHuffmanTable();
 			}
 		}
+#endif
 		JpegHuffmanTable[3] componentDcHuffmanTables;
 		JpegHuffmanTable[3] componentAcHuffmanTables;
 		int restartInterval = 0;
@@ -225,7 +230,11 @@ public class JpegDecoder : ImageDecoder
 								throw "Expected Restart Marker";
 							restartMarker = restartMarker + 1 & 7;
 							Bits = 0;
+#if CI1
+							dcs.Fill(0);
+#else
 							dcs.Clear();
+#endif
 						}
 						for (int v = 0; v < Result.ColorSamplingV; v++) {
 							for (int h = 0; h < Result.ColorSamplingH; h++) {

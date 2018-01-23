@@ -17,11 +17,21 @@ public class Image
 
 	/// Returns image width.
 	public int GetWidth()
-		return Width;
+#if CI1
+		=>
+#else
+		return
+#endif
+			Width;
 
 	/// Returns image height.
 	public int GetHeight()
-		return Height;
+#if CI1
+		=>
+#else
+		return
+#endif
+			Height;
 
 	int GetBitsPerPixel()
 	{
@@ -30,19 +40,44 @@ public class Image
 	}
 
 	int GetAdam7Stride(int pass)
-		return (Width + (7 >> (pass >> 1)) >> (8 - pass >> 1)) * GetBitsPerPixel() + 7 >> 3;
+#if CI1
+		=>
+#else
+		return
+#endif
+			(Width + (7 >> (pass >> 1)) >> (8 - pass >> 1)) * GetBitsPerPixel() + 7 >> 3;
 
 	int GetAdam7Height(int pass)
-		return Height + (7 >> (pass - 1 >> 1)) >> (pass == 1 ? 3 : 9 - pass >> 1);
+#if CI1
+		=>
+#else
+		return
+#endif
+			Height + (7 >> (pass - 1 >> 1)) >> (pass == 1 ? 3 : 9 - pass >> 1);
 
 	int GetColorWidth()
-		return (Width + ColorSamplingH - 1) / ColorSamplingH;
+#if CI1
+		=>
+#else
+		return
+#endif
+			(Width + ColorSamplingH - 1) / ColorSamplingH;
 
 	int GetColorHeight()
-		return (Height + ColorSamplingV - 1) / ColorSamplingV;
+#if CI1
+		=>
+#else
+		return
+#endif
+			(Height + ColorSamplingV - 1) / ColorSamplingV;
 
 	static int Clamp(int b)
-		return b < 0 ? 0 : b > 255 ? 255 : b;
+#if CI1
+		=>
+#else
+		return
+#endif
+			b < 0 ? 0 : b > 255 ? 255 : b;
 
 	/// Returns pixel at the given position in the form 0xAARRGGBB.
 	public int GetPixel(int x, int y)

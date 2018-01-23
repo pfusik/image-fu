@@ -22,6 +22,9 @@ public abstract class ImageDecoder
 		}
 	}
 
+#if CI1
+	protected
+#endif
 	abstract void DoDecode();
 
 	/// Decodes a bitmap stream passed as a byte array.

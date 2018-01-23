@@ -62,6 +62,9 @@ public class GifDecoder : ImageDecoder
 		return y * width + x;
 	}
 
+#if CI1
+	protected
+#endif
 	override void DoDecode()
 	{
 		if (ReadByte() != 'G'

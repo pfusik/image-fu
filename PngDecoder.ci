@@ -2,7 +2,12 @@
 public class PngDecoder : ImageDecoder
 {
 	static int Abs(int x)
-		return x >= 0 ? x : -x;
+#if CI1
+		=>
+#else
+		return
+#endif
+			x >= 0 ? x : -x;
 
 	int ReadLong()
 	{
@@ -14,7 +19,12 @@ public class PngDecoder : ImageDecoder
 	}
 
 	static int ToChunkType(string s)
-		return s[0] << 24 | s[1] << 16 | s[2] << 8 | s[3];
+#if CI1
+		=>
+#else
+		return
+#endif
+			s[0] << 24 | s[1] << 16 | s[2] << 8 | s[3];
 
 	int ChunkRemaining;
 
@@ -65,7 +75,11 @@ public class PngDecoder : ImageDecoder
 
 	void BuildHuffmanTrees()
 	{
+#if CI1
+		NBitCodeCount.Fill(0);
+#else
 		NBitCodeCount.Clear();
+#endif
 		for (int i = 0; i < AllSymbols; i++)
 			NBitCodeCount[SymbolCodeLength[i]]++;
 		int offset = 0;
@@ -131,7 +145,11 @@ public class PngDecoder : ImageDecoder
 				if (temporaryCodes < 0)
 					throw "Decompression error";
 				temporaryCodes += 4;
+#if CI1
+				SymbolCodeLength.Fill(0);
+#else
 				SymbolCodeLength.Clear();
+#endif
 				for (int i = 0; i < temporaryCodes; i++) {
 					int bits = ReadBits(3);
 					const byte[] tempSymbols = { 16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15 };
@@ -291,11 +309,19 @@ public class PngDecoder : ImageDecoder
 					break;
 				}
 				src++;
-				Result.Pixels[dest++] = value.LowByte;
+				Result.Pixels[dest++] =
+#if CI1
+					value & 0xff;
+#else
+					value.LowByte;
+#endif
 			}
 		}
 	}
 
+#if CI1
+	protected
+#endif
 	override void DoDecode()
 	{
 		if (ReadByte() != 0x89
