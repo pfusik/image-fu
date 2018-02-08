@@ -271,37 +271,62 @@ public class PngDecoder : ImageDecoder
 		Inflate(unpacked, unpackedLength);
 	}
 
+	int Type;
+	int Depth;
+
+	int GetBitsPerPixel()
+	{
+		const byte[7] channels = { 1, 0, 3, 1, 2, 0, 4 };
+		return channels[Type] * Depth;
+	}
+
+	int GetAdam7Stride(int pass)
+#if CI1
+		=>
+#else
+		return
+#endif
+			(Width + (7 >> (pass >> 1)) >> (8 - pass >> 1)) * GetBitsPerPixel() + 7 >> 3;
+
+	int GetAdam7Height(int pass)
+#if CI1
+		=>
+#else
+		return
+#endif
+			Height + (7 >> (pass - 1 >> 1)) >> (pass == 1 ? 3 : 9 - pass >> 1);
+
 	void Filter(int dest, int src, int bytesPerLine, int height)
 	{
-		int bitsPerPixel = Result.GetBitsPerPixel();
+		int bitsPerPixel = GetBitsPerPixel();
 		int bytesPerPixel = bitsPerPixel <= 8 ? 1 : bitsPerPixel >> 3;
 		for (int y = 0; y < height; y++) {
-			int filter = Result.Pixels[src++];
+			int filter = Pixels[src++];
 			if (filter > 4)
 				throw "Invalid filter";
 			for (int x = 0; x < bytesPerLine; x++) {
-				int value = Result.Pixels[src];
+				int value = Pixels[src];
 				switch (filter) {
 				case 0:
 					break;
 				case 1:
 					if (x >= bytesPerPixel)
-						value += Result.Pixels[dest - bytesPerPixel];
+						value += Pixels[dest - bytesPerPixel];
 					break;
 				case 2:
 					if (y > 0)
-						value += Result.Pixels[dest - bytesPerLine];
+						value += Pixels[dest - bytesPerLine];
 					break;
 				case 3:
-					int sum = x >= bytesPerPixel ? Result.Pixels[dest - bytesPerPixel] : 0;
+					int sum = x >= bytesPerPixel ? Pixels[dest - bytesPerPixel] : 0;
 					if (y > 0)
-						sum += Result.Pixels[dest - bytesPerLine];
+						sum += Pixels[dest - bytesPerLine];
 					value += sum >> 1;
 					break;
 				case 4:
-					byte a = x >= bytesPerPixel ? Result.Pixels[dest - bytesPerPixel] : 0;
-					byte b = y > 0 ? Result.Pixels[dest - bytesPerLine] : 0;
-					byte c = x >= bytesPerPixel && y > 0? Result.Pixels[dest - bytesPerPixel - bytesPerLine] : 0;
+					byte a = x >= bytesPerPixel ? Pixels[dest - bytesPerPixel] : 0;
+					byte b = y > 0 ? Pixels[dest - bytesPerLine] : 0;
+					byte c = x >= bytesPerPixel && y > 0? Pixels[dest - bytesPerPixel - bytesPerLine] : 0;
 					int pa = Abs(b - c);
 					int pb = Abs(a - c);
 					int pc = Abs(a + b - (c << 1));
@@ -309,7 +334,7 @@ public class PngDecoder : ImageDecoder
 					break;
 				}
 				src++;
-				Result.Pixels[dest++] =
+				Pixels[dest++] =
 #if CI1
 					value & 0xff;
 #else
@@ -318,6 +343,11 @@ public class PngDecoder : ImageDecoder
 			}
 		}
 	}
+
+	bool Interlace;
+	int[8] Adam7PassOffset;
+	int TransparentColor;
+	int TransparentColorHi;
 
 #if CI1
 	protected
@@ -334,23 +364,23 @@ public class PngDecoder : ImageDecoder
 		 || ReadByte() != 0x0a)
 			throw "Not a PNG";
 
-		Result.Type = -1;
+		Type = -1;
 		for (;;) {
 			int chunkLength = ReadLong();
 			int chunkType = ReadLong();
 			switch (chunkType) {
 			case ToChunkType("IHDR"):
-				if (Result.Type >= 0 || chunkLength != 13)
+				if (Type >= 0 || chunkLength != 13)
 					throw "Invalid header";
-				Result.Width = ReadLong();
-				Result.Height = ReadLong();
-				if (Result.Width <= 0 || Result.Height <= 0)
+				Width = ReadLong();
+				Height = ReadLong();
+				if (Width <= 0 || Height <= 0)
 					throw "Invalid header";
-				Result.Depth = ReadByte();
-				if (Result.Depth > 16)
+				Depth = ReadByte();
+				if (Depth > 16)
 					throw "Invalid header";
-				Result.Type = ReadByte(); // color type 1=palette, 2=color, 4=alpha
-				if (Result.Type > 6)
+				Type = ReadByte(); // color type 1=palette, 2=color, 4=alpha
+				if (Type > 6)
 					throw "Invalid header";
 				const int[7] validDepths = {
 					0x10116, // 0: grayscale: 1, 2, 4, 8, 16
@@ -361,7 +391,7 @@ public class PngDecoder : ImageDecoder
 					0x00000, // 5: invalid
 					0x10100  // 6: RGBA: 8,16
 				};
-				if ((validDepths[Result.Type] & 1 << Result.Depth) == 0)
+				if ((validDepths[Type] & 1 << Depth) == 0)
 					throw "Invalid header";
 				if (ReadByte() != 0)
 					throw "Invalid compression";
@@ -369,15 +399,15 @@ public class PngDecoder : ImageDecoder
 					throw "Invalid filter";
 				switch (ReadByte()) {
 				case 0:
-					Result.Adam7Interlace = false;
+					Interlace = false;
 					break;
 				case 1:
-					Result.Adam7Interlace = true;
+					Interlace = true;
 					break;
 				default:
 					throw "Invalid interlace";
 				}
-				Result.TransparentColor = -1;
+				TransparentColor = -1;
 				break;
 
 			case ToChunkType("PLTE"):
@@ -387,28 +417,28 @@ public class PngDecoder : ImageDecoder
 				break;
 
 			case ToChunkType("tRNS"):
-				switch (Result.Type) {
+				switch (Type) {
 				case 0: // grayscale
 					if (chunkLength != 2)
 						throw "Invalid transparency";
 					int hi = ReadByte();
-					Result.TransparentColor = hi << 8 | ReadByte();
+					TransparentColor = hi << 8 | ReadByte();
 					break;
 				case 2: // RGB
 					if (chunkLength != 6)
 						throw "Invalid transparency";
-					Result.TransparentColor = 0;
-					Result.TransparentColorHi = 0;
+					TransparentColor = 0;
+					TransparentColorHi = 0;
 					for (int i = 0; i < 3; i++) {
-						Result.TransparentColorHi = Result.TransparentColorHi << 8 | ReadByte();
-						Result.TransparentColor = Result.TransparentColor << 8 | ReadByte();
+						TransparentColorHi = TransparentColorHi << 8 | ReadByte();
+						TransparentColor = TransparentColor << 8 | ReadByte();
 					}
 					break;
 				case 3: // indexed
 					if (chunkLength > 256)
 						throw "Invalid transparency";
 					for (int i = 0; i < chunkLength; i++)
-						Result.Palette[i] &= ReadByte() << 24 | 0xffffff;
+						Palette[i] &= ReadByte() << 24 | 0xffffff;
 					break;
 				default:
 					throw "Invalid transparency";
@@ -416,36 +446,36 @@ public class PngDecoder : ImageDecoder
 				break;
 
 			case ToChunkType("IDAT"):
-				if (Result.Type < 0)
+				if (Type < 0)
 					throw "Invalid header";
 				ChunkRemaining = chunkLength;
 
 				int bytesPerLine;
 				int uncompressedLength;
-				if (Result.Adam7Interlace) {
+				if (Interlace) {
 					uncompressedLength = 0;
 					for (int pass = 1; pass <= 7; pass++) {
-						bytesPerLine = Result.GetAdam7Stride(pass);
+						bytesPerLine = GetAdam7Stride(pass);
 						if (bytesPerLine > 0)
-							uncompressedLength += Result.GetAdam7Height(pass) * (1 + bytesPerLine);
+							uncompressedLength += GetAdam7Height(pass) * (1 + bytesPerLine);
 					}
 				}
 				else {
-					bytesPerLine = Result.GetAdam7Stride(7);
-					uncompressedLength = Result.Height * (1 + bytesPerLine);
+					bytesPerLine = GetAdam7Stride(7);
+					uncompressedLength = Height * (1 + bytesPerLine);
 				}
 
-				Result.Pixels = new byte[uncompressedLength];
-				Uncompress(Result.Pixels, uncompressedLength);
+				Pixels = new byte[uncompressedLength];
+				Uncompress(Pixels, uncompressedLength);
 
-				if (Result.Adam7Interlace) {
+				if (Interlace) {
 					int src = 0;
 					int dest = 0;
 					for (int pass = 1; pass <= 7; pass++) {
-						bytesPerLine = Result.GetAdam7Stride(pass);
+						bytesPerLine = GetAdam7Stride(pass);
 						if (bytesPerLine > 0) {
-							Result.Adam7PassOffset[pass] = dest;
-							int height = Result.GetAdam7Height(pass);
+							Adam7PassOffset[pass] = dest;
+							int height = GetAdam7Height(pass);
 							Filter(dest, src, bytesPerLine, height);
 							src += height * (1 + bytesPerLine);
 							dest += height * bytesPerLine;
@@ -453,7 +483,7 @@ public class PngDecoder : ImageDecoder
 					}
 				}
 				else
-					Filter(0, 0, bytesPerLine, Result.Height);
+					Filter(0, 0, bytesPerLine, Height);
 				return;
 
 			default:
@@ -467,4 +497,172 @@ public class PngDecoder : ImageDecoder
 		}
 	}
 
+	public override int GetPixel(int x, int y)
+	{
+		int offset;
+		if (Interlace) {
+			int pass;
+			switch (y & 7) {
+			case 0:
+				switch (x & 7) {
+				case 0:
+					pass = 1;
+					x >>= 3;
+					y >>= 3;
+					break;
+				case 4:
+					pass = 2;
+					x >>= 3;
+					y >>= 3;
+					break;
+				case 2:
+				case 6:
+					pass = 4;
+					x >>= 2;
+					y >>= 2;
+					break;
+				default:
+					pass = 6;
+					x >>= 1;
+					y >>= 1;
+					break;
+				}
+				break;
+			case 4:
+				switch (x & 3) {
+				case 0:
+					pass = 3;
+					x >>= 2;
+					y >>= 3;
+					break;
+				case 2:
+					pass = 4;
+					x >>= 2;
+					y >>= 2;
+					break;
+				default:
+					pass = 6;
+					x >>= 1;
+					y >>= 1;
+					break;
+				}
+				break;
+			case 2:
+			case 6:
+				if ((x & 1) == 0) {
+					pass = 5;
+					y >>= 2;
+				}
+				else {
+					pass = 6;
+					y >>= 1;
+				}
+				x >>= 1;
+				break;
+			default:
+				pass = 7;
+				y >>= 1;
+				break;
+			}
+			offset = Adam7PassOffset[pass] + y * GetAdam7Stride(pass);
+		}
+		else {
+			offset = y * GetAdam7Stride(7);
+		}
+
+		int b;
+		int bytesPerComponent;
+
+		switch (Type) {
+
+		case 0: // grayscale
+			int rgb;
+			switch (Depth) {
+			case 1:
+				b = Pixels[offset + (x >> 3)] >> (~x & 7) & 1;
+				rgb = b * 0xffffff;
+				break;
+			case 2:
+				b = Pixels[offset + (x >> 2)] >> ((~x & 3) << 1) & 3;
+				rgb = b * 0x555555;
+				break;
+			case 4:
+				b = Pixels[offset + (x >> 1)];
+				b = (x & 1) == 0 ? b >> 4 : b & 15;
+				rgb = b * 0x111111;
+				break;
+			case 8:
+				b = Pixels[offset + x];
+				rgb = b * 0x010101;
+				break;
+			case 16:
+				offset += x << 1;
+				b = Pixels[offset];
+				rgb = b * 0x010101;
+				b = b << 8 | Pixels[offset + 1];
+				break;
+			default:
+				return 0;
+			}
+			if (b != TransparentColor)
+				rgb |= 0xff << 24;
+			return rgb;
+
+		case 2: // RGB
+			switch (Depth) {
+			case 8:
+				offset += x * 3;
+				rgb = Pixels[offset] << 16 | Pixels[offset + 1] << 8 | Pixels[offset + 2];
+				if (rgb != TransparentColor)
+					rgb |= 0xff << 24;
+				return rgb;
+			case 16:
+				offset += x * 6;
+				rgb = Pixels[offset] << 16 | Pixels[offset + 2] << 8 | Pixels[offset + 4];
+				if (rgb != TransparentColorHi
+				 || (Pixels[offset + 1] << 16 | Pixels[offset + 3] << 8 | Pixels[offset + 5]) != TransparentColor)
+					rgb |= 0xff << 24;
+				return rgb;
+			default:
+				return 0;
+			}
+
+		case 3: // indexed
+			switch (Depth) {
+			case 1:
+				b = Pixels[offset + (x >> 3)] >> (~x & 7) & 1;
+				break;
+			case 2:
+				b = Pixels[offset + (x >> 2)] >> ((~x & 3) << 1) & 3;
+				break;
+			case 4:
+				b = Pixels[offset + (x >> 1)];
+				b = (x & 1) == 0 ? b >> 4 : b & 15;
+				break;
+			case 8:
+				b = Pixels[offset + x];
+				break;
+			default:
+				return 0;
+			}
+			return Palette[b];
+
+		case 4: // grayscale+alpha
+			bytesPerComponent = Depth >> 3;
+			offset += x * (2 * bytesPerComponent);
+			return Pixels[offset + bytesPerComponent] << 24
+			     | Pixels[offset] * 0x010101;
+
+		case 6: // RGBA
+			bytesPerComponent = Depth >> 3;
+			offset += x * (4 * bytesPerComponent);
+			return Pixels[offset + 3 * bytesPerComponent] << 24
+			     | Pixels[offset] << 16
+			     | Pixels[offset + bytesPerComponent] << 8
+			     | Pixels[offset + 2 * bytesPerComponent];
+
+		default:
+			return 0;
+		}
+	}
 }

@@ -1,8 +1,6 @@
 /// Decoder of the GIF bitmap format.
 public class GifDecoder : ImageDecoder
 {
-	bool Interlace;
-
 	int ReadWord()
 	{
 		int lo = ReadByte();
@@ -43,24 +41,7 @@ public class GifDecoder : ImageDecoder
 		return result;
 	}
 
-	int ToInterlaceOffset(int offset)
-	{
-		if (!Interlace)
-			return offset;
-		int width = Result.Width;
-		int height = Result.Height;
-		int y = offset / width;
-		int x = offset % width;
-		if (y >= height + 1 >> 1)
-			y = y - (height + 1 >> 1) << 1 | 1; // pass 4
-		else if (y >= height + 3 >> 2)
-			y = y - (height + 3 >> 2) << 2 | 2; // pass 3
-		else if (y >= height + 7 >> 3)
-			y = y - (height + 7 >> 3) << 3 | 4; // pass 2
-		else
-			y <<= 3; // pass 1
-		return y * width + x;
-	}
+	bool Interlace;
 
 #if CI1
 	protected
@@ -115,9 +96,9 @@ public class GifDecoder : ImageDecoder
 
 		ReadWord();
 		ReadWord();
-		Result.Width = ReadWord();
-		Result.Height = ReadWord();
-		if (Result.Width == 0 || Result.Height == 0)
+		Width = ReadWord();
+		Height = ReadWord();
+		if (Width == 0 || Height == 0)
 			throw "Zero size";
 		flags = ReadByte();
 		Interlace = (flags & 0x40) != 0;
@@ -128,17 +109,14 @@ public class GifDecoder : ImageDecoder
 		if (transparentColor >= 0) {
 			// make it transparent, but keep the color
 			// just in case someone needs it
-			Result.Palette[transparentColor] &= 0xffffff;
+			Palette[transparentColor] &= 0xffffff;
 		}
 
 		BlockBytes = 0;
 		BitBuffer = 0;
 		BitBufferBits = 0;
-		int pixelsLength = Result.Width * Result.Height;
-		Result.Depth = 8;
-		Result.Type = 3; // indexed
-		Result.Adam7Interlace = false;
-		Result.Pixels = new byte[pixelsLength];
+		int pixelsLength = Width * Height;
+		Pixels = new byte[pixelsLength];
 		int literalCodes = 1 << literalBits;
 		int codes = literalCodes + 2;
 		int codeBits = literalBits + 1;
@@ -182,7 +160,7 @@ public class GifDecoder : ImageDecoder
 			do {
 				if (c < codes - 1)
 					pixel = suffixes[c];
-				Result.Pixels[ToInterlaceOffset(--destOffset)] = pixel;
+				Pixels[--destOffset] = pixel;
 				c = prefixes[c];
 			} while (c >= 0);
 
@@ -202,17 +180,39 @@ public class GifDecoder : ImageDecoder
 				offsets[codes++] = pixelsOffset;
 			}
 			if (code < literalCodes)
-				Result.Pixels[ToInterlaceOffset(pixelsOffset++)] = code;
+				Pixels[pixelsOffset++] = code;
 			else {
 				int sourceOffset = offsets[code];
 				int endOffset = offsets[code + 1];
 				if (pixelsOffset + endOffset - sourceOffset >= pixelsLength)
 					throw "Too many pixels";
 				do
-					Result.Pixels[ToInterlaceOffset(pixelsOffset++)] = Result.Pixels[ToInterlaceOffset(sourceOffset++)];
+					Pixels[pixelsOffset++] = Pixels[sourceOffset++];
 				while (sourceOffset <= endOffset);
 			}
 #endif
 		}
+	}
+
+	public override int GetPixel(int x, int y)
+	{
+		if (Interlace) {
+			switch (y & 7) {
+			case 0: // pass 1
+				y >>= 3;
+				break;
+			case 4: // pass 2
+				y = (Height + 7 >> 3) + (y >> 3);
+				break;
+			case 2: // pass 3
+			case 6:
+				y = (Height + 3 >> 2) + (y >> 2);
+				break;
+			default: // pass 4
+				y = (Height + 1 >> 1) + (y >> 1);
+				break;
+			}
+		}
+		return Palette[Pixels[y * Width + x]];
 	}
 }

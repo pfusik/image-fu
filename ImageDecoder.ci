@@ -3,8 +3,27 @@ public abstract class ImageDecoder
 	byte[] Input;
 	int InputLength;
 	int InputOffset;
-	Image Result;
 
+#if CI1
+	protected
+#endif
+		int Width;
+#if CI1
+	protected
+#endif
+		int Height;
+#if CI1
+	protected
+#endif
+		int[256] Palette;
+#if CI1
+	protected
+#endif
+		byte[] Pixels;
+
+#if CI1
+	protected
+#endif
 	int ReadByte()
 	{
 		if (InputOffset >= InputLength)
@@ -12,13 +31,16 @@ public abstract class ImageDecoder
 		return Input[InputOffset++];
 	}
 
+#if CI1
+	protected
+#endif
 	void ReadRgbPalette(int colors)
 	{
 		for (int i = 0; i < colors; i++) {
 			int r = ReadByte();
 			int g = ReadByte();
 			int b = ReadByte();
-			Result.Palette[i] = 0xff << 24 | r << 16 | g << 8 | b;
+			Palette[i] = 0xff << 24 | r << 16 | g << 8 | b;
 		}
 	}
 
@@ -30,18 +52,36 @@ public abstract class ImageDecoder
 	/// Decodes a bitmap stream passed as a byte array.
 	/// Throws an exception on error.
 	public void Decode(
-		/// The result.
-		Image result,
 		/// The content of the stream.
 		byte[] input,
 		/// The length of the stream.
 		int inputLength)
 	{
-		result.Pixels = null;
-		Result = result;
+		Pixels = null;
 		Input = input;
 		InputLength = inputLength;
 		InputOffset = 0;
 		DoDecode();
 	}
+
+	/// Returns image width.
+	public int GetWidth()
+#if CI1
+		=>
+#else
+		return
+#endif
+			Width;
+
+	/// Returns image height.
+	public int GetHeight()
+#if CI1
+		=>
+#else
+		return
+#endif
+			Height;
+
+	/// Returns pixel at the given position in the form 0xAARRGGBB.
+	public abstract int GetPixel(int x, int y);
 }

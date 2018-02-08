@@ -1,10 +1,9 @@
 function image2canvas(input)
 {
-	var image = new Image();
+	var decoder;
 	try {
 		if (input.length == 0)
 			throw "Not a JPEG, PNG or GIF";
-		var decoder;
 		switch (input[0]) {
 		case 0x47:
 			decoder = new GifDecoder();
@@ -18,22 +17,22 @@ function image2canvas(input)
 		default:
 			throw "Not a JPEG, PNG or GIF";
 		}
-		decoder.decode(image, input, input.length);
+		decoder.decode(input, input.length);
 	} catch (e) {
 		alert(e);
 		return;
 	}
 
 	var canvas = document.getElementById("canvas");
-	var width = image.getWidth();
-	var height = image.getHeight();
+	var width = decoder.getWidth();
+	var height = decoder.getHeight();
 	canvas.width = width;
 	canvas.height = height;
 	var context = canvas.getContext("2d");
 	var imageData = context.createImageData(width, height);
 	for (var y = 0; y < height; y++) {
 		for (var x = 0; x < width; x++) {
-			var rgb = image.getPixel(x, y);
+			var rgb = decoder.getPixel(x, y);
 			var i = y * width + x << 2;
 			imageData.data[i] = rgb >> 16 & 0xff;
 			imageData.data[i + 1] = rgb >> 8 & 0xff;
