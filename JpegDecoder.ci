@@ -257,7 +257,8 @@ public class JpegDecoder : ImageDecoder
 						for (int v = 0; v < ColorSamplingV; v++) {
 							for (int h = 0; h < ColorSamplingH; h++) {
 								dcs[0] += ReadBlock(componentDcHuffmanTables[0], componentAcHuffmanTables[0], lastCoefficient) * componentQuantizationTables[0][0];
-								Pixels[(y + v) * Width + x + h] = 128 + (dcs[0] >> 3 - bitPosition);
+								if (x + h < Width && y + v < Height)
+									Pixels[(y + v) * Width + x + h] = 128 + (dcs[0] >> 3 - bitPosition);
 							}
 						}
 						if (Components == 3) {
