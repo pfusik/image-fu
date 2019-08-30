@@ -1,7 +1,7 @@
 class JpegHuffmanTable
 {
-	byte[16] NBitCodeCount;
-	byte[256] Symbols;
+	internal byte[16] NBitCodeCount;
+	internal byte[256] Symbols;
 }
 
 /// Decoder of the JPEG  bitmap format.
@@ -11,19 +11,20 @@ public class JpegDecoder : ImageDecoder
 	int ColorSamplingH;
 	int ColorSamplingV;
 
-	int ReadWord()
+	int ReadWord!() throws
 	{
 		int hi = ReadByte();
-		return hi << 8 | ReadByte();
+		int lo = ReadByte();
+		return (hi << 8) | lo;
 	}
 
-	void SkipBytes(int length)
+	void SkipBytes!(int length) throws
 	{
 		while (--length >= 0)
 			ReadByte();
 	}
 
-	void ReadBytes(byte[] result, int length)
+	void ReadBytes!(byte[] result, int length) throws
 	{
 		for (int i = 0; i < length; i++)
 			result[i] = ReadByte();
@@ -31,7 +32,7 @@ public class JpegDecoder : ImageDecoder
 
 	int Bits;
 
-	int ReadBit()
+	int ReadBit!() throws
 	{
 		if ((Bits & 0x7f) == 0) {
 			int value = ReadByte();
@@ -44,7 +45,7 @@ public class JpegDecoder : ImageDecoder
 		return Bits >> 8 & 1;
 	}
 
-	int ReadSignedBits(int n)
+	int ReadSignedBits!(int n) throws
 	{
 		if (n == 0)
 			return 0;
@@ -59,7 +60,7 @@ public class JpegDecoder : ImageDecoder
 	}
 	
 
-	int ReadCode(JpegHuffmanTable table)
+	int ReadCode!(JpegHuffmanTable table) throws
 	{
 		int offset = 0;
 		int code = 0;
@@ -74,7 +75,7 @@ public class JpegDecoder : ImageDecoder
 		throw "Unassigned code";
 	}
 
-	int ReadBlock(JpegHuffmanTable dcTable, JpegHuffmanTable acTable, int lastCoefficient)
+	int ReadBlock!(JpegHuffmanTable dcTable, JpegHuffmanTable acTable, int lastCoefficient) throws
 	{
 		int code = ReadCode(dcTable);
 		if (code > 11)
@@ -92,26 +93,11 @@ public class JpegDecoder : ImageDecoder
 		return dcDelta;
 	}
 
-	int GetColorWidth()
-#if CI1
-		=>
-#else
-		return
-#endif
-			(Width + ColorSamplingH - 1) / ColorSamplingH;
+	int GetColorWidth() => (Width + ColorSamplingH - 1) / ColorSamplingH;
 
-	int GetColorHeight()
-#if CI1
-		=>
-#else
-		return
-#endif
-			(Height + ColorSamplingV - 1) / ColorSamplingV;
+	int GetColorHeight() => (Height + ColorSamplingV - 1) / ColorSamplingV;
 
-#if CI1
-	protected
-#endif
-	override void DoDecode()
+	protected override void DoDecode!() throws
 	{
 		if (ReadByte() != 0xff || ReadByte() != 0xd8)
 			throw "Not a JPEG";
@@ -120,16 +106,6 @@ public class JpegDecoder : ImageDecoder
 		byte[3][] componentQuantizationTables;
 		JpegHuffmanTable()[4] dcHuffmanTables;
 		JpegHuffmanTable()[4] acHuffmanTables;
-#if !CI1
-		native {
-			// workaround a cito 0 bug
-			for (var i = 0; i < 4; i++) {
-				quantizationTables[i] = new Uint8Array(new ArrayBuffer(64));
-				dcHuffmanTables[i] = new JpegHuffmanTable();
-				acHuffmanTables[i] = new JpegHuffmanTable();
-			}
-		}
-#endif
 		JpegHuffmanTable[3] componentDcHuffmanTables;
 		JpegHuffmanTable[3] componentAcHuffmanTables;
 		int restartInterval = 0;
@@ -248,11 +224,7 @@ public class JpegDecoder : ImageDecoder
 								throw "Expected Restart Marker";
 							restartMarker = restartMarker + 1 & 7;
 							Bits = 0;
-#if CI1
 							dcs.Fill(0);
-#else
-							dcs.Clear();
-#endif
 						}
 						for (int v = 0; v < ColorSamplingV; v++) {
 							for (int h = 0; h < ColorSamplingH; h++) {
@@ -280,13 +252,7 @@ public class JpegDecoder : ImageDecoder
 		throw "Not a JPEG";
 	}
 
-	static int Clamp(int b)
-#if CI1
-		=>
-#else
-		return
-#endif
-			b < 0 ? 0 : b > 255 ? 255 : b;
+	static int Clamp(int b) => b < 0 ? 0 : b > 255 ? 255 : b;
 
 	public override int GetPixel(int x, int y)
 	{

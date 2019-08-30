@@ -4,37 +4,19 @@ public abstract class ImageDecoder
 	int InputLength;
 	int InputOffset;
 
-#if CI1
-	protected
-#endif
-		int Width;
-#if CI1
-	protected
-#endif
-		int Height;
-#if CI1
-	protected
-#endif
-		int[256] Palette;
-#if CI1
-	protected
-#endif
-		byte[] Pixels;
+	protected int Width;
+	protected int Height;
+	protected int[256] Palette;
+	protected byte[]# Pixels;
 
-#if CI1
-	protected
-#endif
-	int ReadByte()
+	protected int ReadByte!() throws
 	{
 		if (InputOffset >= InputLength)
 			throw "Unexpected EOF";
 		return Input[InputOffset++];
 	}
 
-#if CI1
-	protected
-#endif
-	void ReadRgbPalette(int colors)
+	protected void ReadRgbPalette!(int colors) throws
 	{
 		for (int i = 0; i < colors; i++) {
 			int r = ReadByte();
@@ -44,18 +26,16 @@ public abstract class ImageDecoder
 		}
 	}
 
-#if CI1
-	protected
-#endif
-	abstract void DoDecode();
+	protected abstract void DoDecode!() throws;
 
 	/// Decodes a bitmap stream passed as a byte array.
 	/// Throws an exception on error.
-	public void Decode(
+	public void Decode!(
 		/// The content of the stream.
 		byte[] input,
 		/// The length of the stream.
 		int inputLength)
+		throws
 	{
 		Pixels = null;
 		Input = input;
@@ -65,22 +45,10 @@ public abstract class ImageDecoder
 	}
 
 	/// Returns image width.
-	public int GetWidth()
-#if CI1
-		=>
-#else
-		return
-#endif
-			Width;
+	public int GetWidth() => Width;
 
 	/// Returns image height.
-	public int GetHeight()
-#if CI1
-		=>
-#else
-		return
-#endif
-			Height;
+	public int GetHeight() => Height;
 
 	/// Returns pixel at the given position in the form 0xAARRGGBB.
 	public abstract int GetPixel(int x, int y);

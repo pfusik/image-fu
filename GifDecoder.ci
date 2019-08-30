@@ -1,13 +1,14 @@
 /// Decoder of the GIF bitmap format.
 public class GifDecoder : ImageDecoder
 {
-	int ReadWord()
+	int ReadWord!() throws
 	{
 		int lo = ReadByte();
-		return lo | ReadByte() << 8;
+		int hi = ReadByte();
+		return lo | (hi << 8);
 	}
 
-	void ReadPalette(int flags)
+	void ReadPalette!(int flags) throws
 	{
 		if ((flags & 0x80) != 0)
 			ReadRgbPalette(2 << (flags & 7));
@@ -15,7 +16,7 @@ public class GifDecoder : ImageDecoder
 
 	int BlockBytes;
 
-	int ReadBlockByte()
+	int ReadBlockByte!() throws
 	{
 		if (BlockBytes == 0) {
 			BlockBytes = ReadByte();
@@ -29,7 +30,7 @@ public class GifDecoder : ImageDecoder
 	int BitBuffer;
 	int BitBufferBits;
 
-	int ReadCode(int bits)
+	int ReadCode!(int bits) throws
 	{
 		while (BitBufferBits < bits) {
 			BitBuffer |= ReadBlockByte() << BitBufferBits;
@@ -43,10 +44,7 @@ public class GifDecoder : ImageDecoder
 
 	bool Interlace;
 
-#if CI1
-	protected
-#endif
-	override void DoDecode()
+	protected override void DoDecode() throws
 	{
 		if (ReadByte() != 'G'
 		 || ReadByte() != 'I'
