@@ -1,8 +1,7 @@
 ﻿This project implements [PNG](https://en.wikipedia.org/wiki/Portable_Network_Graphics)
 and [GIF](https://en.wikipedia.org/wiki/GIF) decoders
-in the [Ć programming language](http://cito.sourceforge.net/).
-Ć can be automatically translated to pure
-C, Java, C#, JavaScript, ActionScript, Perl and [D](http://dlang.org/)
+in the [Ć programming language](https://github.com/pfusik/cito).
+Ć can be automatically translated to pure C, C++, Java, C# and JavaScript
 with no additional dependencies.
 
 An HTML 5 example with decoding performed in JavaScript (translated from Ć)
@@ -13,7 +12,7 @@ License
 
 This code is licensed under the standard zlib license.
 
-Copyright (C) 2017 Piotr Fusik
+Copyright (C) 2017-2019 Piotr Fusik
 
 This software is provided 'as-is', without any express or implied
 warranty.  In no event will the authors be held liable for any damages

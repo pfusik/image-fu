@@ -7,6 +7,10 @@ class JpegHuffmanTable
 /// Decoder of the JPEG  bitmap format.
 public class JpegDecoder : ImageDecoder
 {
+	public JpegDecoder()
+	{
+	}
+
 	int Components;
 	int ColorSamplingH;
 	int ColorSamplingV;
@@ -24,7 +28,7 @@ public class JpegDecoder : ImageDecoder
 			ReadByte();
 	}
 
-	void ReadBytes!(byte[] result, int length) throws
+	void ReadBytes!(byte[]! result, int length) throws
 	{
 		for (int i = 0; i < length; i++)
 			result[i] = ReadByte();
@@ -151,7 +155,7 @@ public class JpegDecoder : ImageDecoder
 			case 0xc4: // Define Huffman Tables
 				while (length >= 2 + 1 + 16) {
 					int id = ReadByte();
-					JpegHuffmanTable huffmanTable;
+					JpegHuffmanTable! huffmanTable;
 					if (id < 4)
 						huffmanTable = dcHuffmanTables[id];
 					else if ((id & 0xec) == 0)

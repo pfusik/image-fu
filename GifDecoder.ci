@@ -1,6 +1,10 @@
 /// Decoder of the GIF bitmap format.
 public class GifDecoder : ImageDecoder
 {
+	public GifDecoder()
+	{
+	}
+
 	int ReadWord!() throws
 	{
 		int lo = ReadByte();
@@ -44,7 +48,7 @@ public class GifDecoder : ImageDecoder
 
 	bool Interlace;
 
-	protected override void DoDecode() throws
+	protected override void DoDecode!() throws
 	{
 		if (ReadByte() != 'G'
 		 || ReadByte() != 'I'
