@@ -416,7 +416,7 @@ public class PngDecoder : ImageDecoder
 					throw "Invalid header";
 				ChunkRemaining = chunkLength;
 
-				int bytesPerLine;
+				int bytesPerLine = 0; // initialized to satisfy csc and javac
 				int uncompressedLength;
 				if (Interlace) {
 					uncompressedLength = 0;
@@ -537,12 +537,12 @@ public class PngDecoder : ImageDecoder
 		}
 
 		int b;
+		int rgb;
 		int bytesPerComponent;
 
 		switch (Type) {
 
 		case 0: // grayscale
-			int rgb;
 			switch (Depth) {
 			case 1:
 				b = Pixels[offset + (x >> 3)] >> (~x & 7) & 1;
