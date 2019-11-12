@@ -54,15 +54,3 @@ function openFile(file)
 	};
 	reader.readAsArrayBuffer(file);
 }
-
-function dragHelper(e)
-{
-	e.stopPropagation();
-	e.preventDefault();
-}
-
-function onDrop(e)
-{
-	dragHelper(e);
-	openFile(e.dataTransfer.files[0]);
-}
