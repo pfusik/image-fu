@@ -16,7 +16,7 @@ public class PngDecoder : ImageDecoder
 		return result;
 	}
 
-	static int ToChunkType(string s) => (s[0] << 24 | s[1] << 16 | s[2] << 8 | s[3]) & 0x7fffffff;
+	static int ToChunkType(string s) => s[0] << 24 | s[1] << 16 | s[2] << 8 | s[3];
 
 	int ChunkRemaining;
 
