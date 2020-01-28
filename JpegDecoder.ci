@@ -222,13 +222,15 @@ public class JpegDecoder : ImageDecoder
 				int[3] dcs = 0;
 				for (int y = 0; y < Height; y += ColorSamplingV) {
 					for (int x = 0; x < Width; x += ColorSamplingH) {
-						if (restartInterval > 0 && --restartIntervalCounter == 0) {
-							restartIntervalCounter = restartInterval;
-							if (ReadByte() != 0xff || ReadByte() != 0xd0 + restartMarker)
-								throw "Expected Restart Marker";
-							restartMarker = restartMarker + 1 & 7;
-							Bits = 0;
-							dcs.Fill(0);
+						if (restartInterval > 0) {
+							if (--restartIntervalCounter == 0) {
+								restartIntervalCounter = restartInterval;
+								if (ReadByte() != 0xff || ReadByte() != 0xd0 + restartMarker)
+									throw "Expected Restart Marker";
+								restartMarker = restartMarker + 1 & 7;
+								Bits = 0;
+								dcs.Fill(0);
+							}
 						}
 						for (int v = 0; v < ColorSamplingV; v++) {
 							for (int h = 0; h < ColorSamplingH; h++) {
