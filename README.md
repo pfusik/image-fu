@@ -1,8 +1,8 @@
 ﻿This project implements [PNG](https://en.wikipedia.org/wiki/Portable_Network_Graphics)
 and [GIF](https://en.wikipedia.org/wiki/GIF) decoders
 in the [Ć programming language](https://github.com/pfusik/cito).
-Ć can be automatically translated to pure C, C++, C#, Java, JavaScript
-and Python with no additional dependencies.
+Ć can be automatically translated to pure C, C++, C#, Java, JavaScript,
+Python, Swift and OpenCL with no additional dependencies.
 
 An HTML 5 example with decoding performed in JavaScript (translated from Ć)
 is included.
