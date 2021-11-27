@@ -4,7 +4,7 @@ class JpegHuffmanTable
 	internal byte[256] Symbols;
 }
 
-/// Decoder of the JPEG  bitmap format.
+/// Decoder of the JPEG bitmap format.
 public class JpegDecoder : ImageDecoder
 {
 	public JpegDecoder()
