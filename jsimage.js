@@ -1,6 +1,8 @@
+import { GifDecoder, PngDecoder, JpegDecoder } from "./ImageDecoder.js";
+
 function image2canvas(input)
 {
-	var decoder;
+	let decoder;
 	try {
 		if (input.length == 0)
 			throw "Not a JPEG, PNG or GIF";
@@ -23,17 +25,17 @@ function image2canvas(input)
 		return;
 	}
 
-	var canvas = document.getElementById("canvas");
-	var width = decoder.getWidth();
-	var height = decoder.getHeight();
+	const canvas = document.getElementById("canvas");
+	const width = decoder.getWidth();
+	const height = decoder.getHeight();
 	canvas.width = width;
 	canvas.height = height;
-	var context = canvas.getContext("2d");
-	var imageData = context.createImageData(width, height);
-	for (var y = 0; y < height; y++) {
-		for (var x = 0; x < width; x++) {
-			var rgb = decoder.getPixel(x, y);
-			var i = y * width + x << 2;
+	const context = canvas.getContext("2d");
+	const imageData = context.createImageData(width, height);
+	for (let y = 0; y < height; y++) {
+		for (let x = 0; x < width; x++) {
+			const rgb = decoder.getPixel(x, y);
+			const i = y * width + x << 2;
 			imageData.data[i] = rgb >> 16 & 0xff;
 			imageData.data[i + 1] = rgb >> 8 & 0xff;
 			imageData.data[i + 2] = rgb & 0xff;
@@ -42,15 +44,16 @@ function image2canvas(input)
 	}
 	context.putImageData(imageData, 0, 0);
 
-	var status = document.getElementById("status");
-	status.innerHTML = width + "x" + height;
+	document.getElementById("status").innerHTML = width + "x" + height;
 }
 
-function openFile(file)
+function openFile()
 {
-	var reader = new FileReader();
+	const reader = new FileReader();
 	reader.onload = function (e) {
 		image2canvas(new Uint8Array(e.target.result));
 	};
-	reader.readAsArrayBuffer(file);
+	reader.readAsArrayBuffer(this.files[0]);
 }
+
+document.querySelector("input[type=file]").addEventListener("change", openFile);

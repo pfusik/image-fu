@@ -1,18 +1,17 @@
-<?xml version="1.0"?>
-<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<!DOCTYPE html>
+<html lang="en">
 <head>
-	<meta http-equiv="content-type" content="application/xhtml+xml; charset=UTF-8"/>
+	<meta charset="utf-8" />
 	<title>JavaScript JPEG, PNG and GIF Decoder</title>
-	<style type="text/css">
+	<style>
 		html { background-color: #eee; color: #000; font-family: Georgia,"Times New Roman",Times,serif; }
 	</style>
-	<script type="text/javascript" src="ImageDecoder.js"> </script>
-	<script type="text/javascript" src="jsimage.js"> </script>
+	<script type="module" src="jsimage.js"> </script>
 </head>
 <body>
 	<h1>Pure JavaScript JPEG, PNG and GIF Decoders</h1>
 	<p>This page decodes JPEG, PNG and GIF pictures in JavaScript code.</p>
-	<p>Select file: <input type="file" accept="image/jpeg, image/png, image/gif" onchange="openFile(this.files[0])"/></p>
+	<p>Select file: <input type="file" accept="image/jpeg, image/png, image/gif" /></p>
 	<div>
 		<canvas id="canvas" width="1" height="1"> </canvas>
 		<div id="status"> </div>
