@@ -5,8 +5,6 @@ public class PngDecoder : ImageDecoder
 	{
 	}
 
-	static int Abs(int x) => x >= 0 ? x : -x;
-
 	int ReadLong!() throws
 	{
 		int result = ReadByte() << 24;
@@ -299,9 +297,9 @@ public class PngDecoder : ImageDecoder
 					byte a = x >= bytesPerPixel ? Pixels[dest - bytesPerPixel] : 0;
 					byte b = y > 0 ? Pixels[dest - bytesPerLine] : 0;
 					byte c = x >= bytesPerPixel && y > 0? Pixels[dest - bytesPerPixel - bytesPerLine] : 0;
-					int pa = Abs(b - c);
-					int pb = Abs(a - c);
-					int pc = Abs(a + b - (c << 1));
+					int pa = Math.Abs(b - c);
+					int pb = Math.Abs(a - c);
+					int pc = Math.Abs(a + b - (c << 1));
 					value += pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
 					break;
 				default:

@@ -12,7 +12,7 @@ License
 
 This code is licensed under the standard zlib license.
 
-Copyright (C) 2017-2020 Piotr Fusik
+Copyright (C) 2017-2023 Piotr Fusik
 
 This software is provided 'as-is', without any express or implied
 warranty.  In no event will the authors be held liable for any damages
