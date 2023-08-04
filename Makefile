@@ -1,7 +1,7 @@
-# CITO_OPT = -D GIF_DICTIONARY
+# FUFLAGS = -D GIF_DICTIONARY
 
-browser: ImageDecoder.js
-	$(LOCALAPPDATA)/Programs/Opera/launcher --allow-file-access-from-files file:///$(shell cygpath -am jsimage.html)
+browser: jsimage.html ImageDecoder.js
+	$(LOCALAPPDATA)/Programs/Opera/launcher --allow-file-access-from-files file:///$(shell cygpath -am $<)
 
-ImageDecoder.js: ImageDecoder.ci GifDecoder.ci PngDecoder.ci JpegDecoder.ci
-	cito -o $@ $(CITO_OPT) $^
+ImageDecoder.js: ImageDecoder.fu GifDecoder.fu PngDecoder.fu JpegDecoder.fu
+	fut -o $@ $(FUFLAGS) $^

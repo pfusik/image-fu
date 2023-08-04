@@ -7,7 +7,7 @@ public abstract class ImageDecoder
 	protected int Width;
 	protected int Height;
 	protected int[256] Palette;
-	protected byte[]# Pixels;
+	protected byte[]#? Pixels;
 
 	protected int ReadByte!() throws
 	{

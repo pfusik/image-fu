@@ -1,10 +1,11 @@
-﻿This project implements [PNG](https://en.wikipedia.org/wiki/Portable_Network_Graphics)
-and [GIF](https://en.wikipedia.org/wiki/GIF) decoders
-in the [Ć programming language](https://github.com/pfusik/cito).
-Ć can be automatically translated to pure C, C++, C#, Java, JavaScript,
-Python, Swift and OpenCL with no additional dependencies.
+﻿This project implements [PNG](https://en.wikipedia.org/wiki/Portable_Network_Graphics),
+[GIF](https://en.wikipedia.org/wiki/GIF)
+and [JPEG](https://en.wikipedia.org/wiki/JPEG) decoders
+in the [Fusion programming language](https://fusion-lang.org).
+Fusion can be automatically translated to pure C, C++, C#, D, Java, JavaScript,
+Python, Swift, TypeScript and OpenCL with no additional dependencies.
 
-An HTML 5 example with decoding performed in JavaScript (translated from Ć)
+An HTML 5 example with decoding performed in JavaScript (translated from Fusion)
 is included.
 
 License
