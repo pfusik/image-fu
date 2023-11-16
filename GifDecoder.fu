@@ -5,14 +5,14 @@ public class GifDecoder : ImageDecoder
 	{
 	}
 
-	int ReadWord!() throws
+	ushort ReadWord!() throws ImageFormatException
 	{
 		int lo = ReadByte();
 		int hi = ReadByte();
 		return lo | (hi << 8);
 	}
 
-	void ReadPalette!(int flags) throws
+	void ReadPalette!(int flags) throws ImageFormatException
 	{
 		if ((flags & 0x80) != 0)
 			ReadRgbPalette(2 << (flags & 7));
@@ -20,12 +20,12 @@ public class GifDecoder : ImageDecoder
 
 	int BlockBytes;
 
-	int ReadBlockByte!() throws
+	byte ReadBlockByte!() throws ImageFormatException
 	{
 		if (BlockBytes == 0) {
 			BlockBytes = ReadByte();
 			if (BlockBytes == 0)
-				throw "Unexpected block terminator";
+				throw ImageFormatException("Unexpected block terminator");
 		}
 		BlockBytes--;
 		return ReadByte();
@@ -34,7 +34,7 @@ public class GifDecoder : ImageDecoder
 	int BitBuffer;
 	int BitBufferBits;
 
-	int ReadCode!(int bits) throws
+	ushort ReadCode!(int bits) throws ImageFormatException
 	{
 		while (BitBufferBits < bits) {
 			BitBuffer |= ReadBlockByte() << BitBufferBits;
@@ -48,22 +48,22 @@ public class GifDecoder : ImageDecoder
 
 	bool Interlace;
 
-	protected override void DoDecode!() throws
+	protected override void DoDecode!() throws ImageFormatException
 	{
 		if (ReadByte() != 'G'
 		 || ReadByte() != 'I'
 		 || ReadByte() != 'F'
 		 || ReadByte() != '8')
-			throw "Not a GIF";
+			throw ImageFormatException("Not a GIF");
 		switch (ReadByte()) {
 		case '7':
 		case '9':
 			break;
 		default:
-			throw "Not a GIF";
+			throw ImageFormatException("Not a GIF");
 		}
 		if (ReadByte() != 'a')
-			throw "Not a GIF";
+			throw ImageFormatException("Not a GIF");
 		ReadWord(); // screen width
 		ReadWord(); // screen height
 		int flags = ReadByte();
@@ -77,10 +77,10 @@ public class GifDecoder : ImageDecoder
 			if (b == 0x2c) // Image Descriptor
 				break;
 			if (b != 0x21) // Extension
-				throw "Invalid block";
+				throw ImageFormatException("Invalid block");
 			if (ReadByte() == 0xf9) {
 				if (ReadByte() != 4)
-					throw "Invalid block";
+					throw ImageFormatException("Invalid block");
 				flags = ReadByte();
 				ReadWord();
 				b = ReadByte();
@@ -91,8 +91,7 @@ public class GifDecoder : ImageDecoder
 				int length = ReadByte();
 				if (length == 0)
 					break;
-				while (--length >= 0)
-					ReadByte();
+				SkipBytes(length);
 			}
 		}
 
@@ -101,13 +100,13 @@ public class GifDecoder : ImageDecoder
 		Width = ReadWord();
 		Height = ReadWord();
 		if (Width == 0 || Height == 0)
-			throw "Zero size";
+			throw ImageFormatException("Zero size");
 		flags = ReadByte();
 		Interlace = (flags & 0x40) != 0;
 		ReadPalette(flags); // local palette
 		int literalBits = ReadByte();
 		if (literalBits == 0 || literalBits > 8)
-			throw "Invalid minimum code size";
+			throw ImageFormatException("Invalid minimum code size");
 		if (transparentColor >= 0) {
 			// make it transparent, but keep the color
 			// just in case someone needs it
@@ -144,9 +143,9 @@ public class GifDecoder : ImageDecoder
 				continue;
 			}
 			if (code == literalCodes + 1)
-				throw "Unexpected EOI code";
+				throw ImageFormatException("Unexpected EOI code");
 			if (code >= codes)
-				throw "Code out of range";
+				throw ImageFormatException("Code out of range");
 
 #if GIF_DICTIONARY
 			int c = code;
@@ -155,7 +154,7 @@ public class GifDecoder : ImageDecoder
 				c = prefixes[c];
 			} while (c >= 0);
 			if (pixelsOffset > pixelsLength)
-				throw "Too many pixels";
+				throw ImageFormatException("Too many pixels");
 
 			int destOffset = pixelsOffset;
 			c = code;
@@ -187,7 +186,7 @@ public class GifDecoder : ImageDecoder
 				int sourceOffset = offsets[code];
 				int endOffset = offsets[code + 1];
 				if (pixelsOffset + endOffset - sourceOffset >= pixelsLength)
-					throw "Too many pixels";
+					throw ImageFormatException("Too many pixels");
 				do
 					Pixels[pixelsOffset++] = Pixels[sourceOffset++];
 				while (sourceOffset <= endOffset);

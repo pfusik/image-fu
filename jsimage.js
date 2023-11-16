@@ -2,26 +2,29 @@ import { GifDecoder, PngDecoder, JpegDecoder } from "./ImageDecoder.js";
 
 function image2canvas(input)
 {
+	if (input.length == 0) {
+		alert("Not a PNG, GIF or JPEG");
+		return;
+	}
 	let decoder;
+	switch (input[0]) {
+	case 0x47:
+		decoder = new GifDecoder();
+		break;
+	case 0x89:
+		decoder = new PngDecoder();
+		break;
+	case 0xff:
+		decoder = new JpegDecoder();
+		break;
+	default:
+		alert("Not a PNG, GIF or JPEG");
+		return;
+	}
 	try {
-		if (input.length == 0)
-			throw "Not a JPEG, PNG or GIF";
-		switch (input[0]) {
-		case 0x47:
-			decoder = new GifDecoder();
-			break;
-		case 0x89:
-			decoder = new PngDecoder();
-			break;
-		case 0xff:
-			decoder = new JpegDecoder();
-			break;
-		default:
-			throw "Not a JPEG, PNG or GIF";
-		}
 		decoder.decode(input, input.length);
 	} catch (e) {
-		alert(e);
+		alert("Cannot load file: " + e.message);
 		return;
 	}
 
@@ -50,9 +53,7 @@ function image2canvas(input)
 function openFile()
 {
 	const reader = new FileReader();
-	reader.onload = function (e) {
-		image2canvas(new Uint8Array(e.target.result));
-	};
+	reader.onload = e => image2canvas(new Uint8Array(e.target.result));
 	reader.readAsArrayBuffer(this.files[0]);
 }
 

@@ -1,3 +1,9 @@
+/// Exception thrown when image decoding fails.
+public class ImageFormatException : Exception
+{
+}
+
+/// Common part of the image decoders.
 public abstract class ImageDecoder
 {
 	byte[] Input;
@@ -9,14 +15,20 @@ public abstract class ImageDecoder
 	protected int[256] Palette;
 	protected byte[]#? Pixels;
 
-	protected int ReadByte!() throws
+	protected byte ReadByte!() throws ImageFormatException
 	{
 		if (InputOffset >= InputLength)
-			throw "Unexpected EOF";
+			throw ImageFormatException("Unexpected EOF");
 		return Input[InputOffset++];
 	}
 
-	protected void ReadRgbPalette!(int colors) throws
+	protected void SkipBytes!(int length) throws ImageFormatException
+	{
+		while (--length >= 0)
+			ReadByte();
+	}
+
+	protected void ReadRgbPalette!(int colors) throws ImageFormatException
 	{
 		for (int i = 0; i < colors; i++) {
 			int r = ReadByte();
@@ -26,16 +38,15 @@ public abstract class ImageDecoder
 		}
 	}
 
-	protected abstract void DoDecode!() throws;
+	protected abstract void DoDecode!() throws ImageFormatException;
 
 	/// Decodes a bitmap stream passed as a byte array.
-	/// Throws an exception on error.
 	public void Decode!(
 		/// The content of the stream.
 		byte[] input,
 		/// The length of the stream.
 		int inputLength)
-		throws
+		throws ImageFormatException
 	{
 		Pixels = null;
 		Input = input;
