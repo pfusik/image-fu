@@ -30,7 +30,7 @@ public class JpegDecoder : ImageDecoder
 
 	int Bits;
 
-	0 .. 1 ReadBit!() throws ImageFormatException
+	uint ReadBit!() throws ImageFormatException
 	{
 		if ((Bits & 0x7f) == 0) {
 			int value = ReadByte();

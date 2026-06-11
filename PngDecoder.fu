@@ -33,7 +33,7 @@ public class PngDecoder : ImageDecoder
 
 	int Bits;
 
-	0 .. 1 ReadBit!() throws ImageFormatException
+	uint ReadBit!() throws ImageFormatException
 	{
 		if (Bits <= 1)
 			Bits = ReadIdatByte() | 0x100;
@@ -42,7 +42,7 @@ public class PngDecoder : ImageDecoder
 		return result;
 	}
 
-	ushort ReadBits!(int count) throws ImageFormatException
+	uint ReadBits!(int count) throws ImageFormatException
 	{
 		int result = 0;
 		for (int rank = 0; rank < count; rank++) {
@@ -78,7 +78,7 @@ public class PngDecoder : ImageDecoder
 			CodeToSymbol[NBitCodeOffset[SymbolCodeLength[i]]++] = i;
 	}
 
-	0 .. (AllSymbols - 1) FetchCode!(int tree) throws ImageFormatException
+	uint FetchCode!(int tree) throws ImageFormatException
 	{
 		int code = 0;
 		do {
