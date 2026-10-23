@@ -56,7 +56,6 @@ public class JpegDecoder : ImageDecoder
 			result++;
 		return result;
 	}
-	
 
 	byte ReadCode!(JpegHuffmanTable table) throws ImageFormatException
 	{
@@ -204,7 +203,7 @@ public class JpegDecoder : ImageDecoder
 				if (lastCoefficient > 63)
 					throw ImageFormatException("Invalid SOS");
 				int bitPosition = ReadByte();
-				if (bitPosition > 1) // TODO?
+				if (bitPosition > 13)
 					throw ImageFormatException("Invalid SOS");
 
 				Bits = 0;
@@ -230,15 +229,15 @@ public class JpegDecoder : ImageDecoder
 							for (int h = 0; h < ColorSamplingH; h++) {
 								dcs[0] += ReadBlock(componentDcHuffmanTables[0], componentAcHuffmanTables[0], lastCoefficient) * componentQuantizationTables[0][0];
 								if (x + h < Width && y + v < Height)
-									Pixels[(y + v) * Width + x + h] = 128 + (dcs[0] >> 3 - bitPosition);
+									Pixels[(y + v) * Width + x + h] = 128 + (dcs[0] << bitPosition >> 3);
 							}
 						}
 						if (Components == 3) {
 							dcs[1] += ReadBlock(componentDcHuffmanTables[1], componentAcHuffmanTables[1], lastCoefficient) * componentQuantizationTables[1][0];
 							dcs[2] += ReadBlock(componentDcHuffmanTables[2], componentAcHuffmanTables[2], lastCoefficient) * componentQuantizationTables[2][0];
 							int offset = yLength + y / ColorSamplingV * GetColorWidth() + x / ColorSamplingH;
-							Pixels[offset] = 128 + (dcs[1] >> 3 - bitPosition);
-							Pixels[offset + colorLength] = 128 + (dcs[2] >> 3 - bitPosition);
+							Pixels[offset] = 128 + (dcs[1] << bitPosition >> 3);
+							Pixels[offset + colorLength] = 128 + (dcs[2] << bitPosition >> 3);
 						}
 					}
 				}
