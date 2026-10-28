@@ -101,6 +101,8 @@ public class GifDecoder : ImageDecoder
 		Height = ReadWord();
 		if (Width == 0 || Height == 0)
 			throw ImageFormatException("Zero size");
+		if (Width > 0x7fffffff / Height)
+			throw ImageFormatException("Image too large");
 		flags = ReadByte();
 		Interlace = (flags & 0x40) != 0;
 		ReadPalette(flags); // local palette
