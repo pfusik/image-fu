@@ -6,6 +6,7 @@ class JpegHuffmanTable
 
 class JpegComponentSetting
 {
+	internal int Dc = 0;
 	internal byte[] QuantizationTable;
 	internal JpegHuffmanTable DcHuffmanTable;
 	internal JpegHuffmanTable AcHuffmanTable;
@@ -79,12 +80,12 @@ public class JpegDecoder : ImageDecoder
 		throw ImageFormatException("Unassigned code");
 	}
 
-	int ReadBlock!(JpegComponentSetting component, int lastCoefficient) throws ImageFormatException
+	byte ReadBlock!(JpegComponentSetting! component, int bitPosition, int lastCoefficient) throws ImageFormatException
 	{
 		int code = ReadCode(component.DcHuffmanTable);
 		if (code > 11)
 			throw ImageFormatException("Invalid DC code");
-		short dcDelta = ReadSignedBits(code);
+		component.Dc += ReadSignedBits(code) * component.QuantizationTable[0];
 		for (int i = 1; i <= lastCoefficient; i++) {
 			code = ReadCode(component.AcHuffmanTable);
 			if (code == 0)
@@ -94,7 +95,7 @@ public class JpegDecoder : ImageDecoder
 				throw ImageFormatException("Invalid AC code");
 			ReadSignedBits(code & 0xf);
 		}
-		return dcDelta * component.QuantizationTable[0];
+		return 128 + (component.Dc << bitPosition >> 3);
 	}
 
 	int GetColorWidth() => (Width + ColorSamplingH - 1) / ColorSamplingH;
@@ -217,7 +218,6 @@ public class JpegDecoder : ImageDecoder
 				Pixels = new byte[yLength + (colorLength << 1)];
 				int restartIntervalCounter = restartInterval + 1;
 				int restartMarker = 0;
-				int[3] dcs = 0;
 				for (int y = 0; y < Height; y += ColorSamplingV) {
 					for (int x = 0; x < Width; x += ColorSamplingH) {
 						if (restartInterval > 0) {
@@ -227,22 +227,21 @@ public class JpegDecoder : ImageDecoder
 									throw ImageFormatException("Expected Restart Marker");
 								restartMarker = restartMarker + 1 & 7;
 								Bits = 0;
-								dcs.Fill(0);
+								for (int i = 0; i < Components; i++)
+									componentSettings[i].Dc = 0;
 							}
 						}
 						for (int v = 0; v < ColorSamplingV; v++) {
 							for (int h = 0; h < ColorSamplingH; h++) {
-								dcs[0] += ReadBlock(componentSettings[0], lastCoefficient);
+								byte pixel = ReadBlock(componentSettings[0], bitPosition, lastCoefficient);
 								if (x + h < Width && y + v < Height)
-									Pixels[(y + v) * Width + x + h] = 128 + (dcs[0] << bitPosition >> 3);
+									Pixels[(y + v) * Width + x + h] = pixel;
 							}
 						}
 						if (Components == 3) {
-							dcs[1] += ReadBlock(componentSettings[1], lastCoefficient);
-							dcs[2] += ReadBlock(componentSettings[2], lastCoefficient);
 							int offset = yLength + y / ColorSamplingV * GetColorWidth() + x / ColorSamplingH;
-							Pixels[offset] = 128 + (dcs[1] << bitPosition >> 3);
-							Pixels[offset + colorLength] = 128 + (dcs[2] << bitPosition >> 3);
+							Pixels[offset] = ReadBlock(componentSettings[1], bitPosition, lastCoefficient);
+							Pixels[offset + colorLength] = ReadBlock(componentSettings[2], bitPosition, lastCoefficient);
 						}
 					}
 				}
