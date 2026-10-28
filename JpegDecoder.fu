@@ -4,6 +4,13 @@ class JpegHuffmanTable
 	internal byte[256] Symbols;
 }
 
+class JpegComponentSetting
+{
+	internal byte[] QuantizationTable;
+	internal JpegHuffmanTable DcHuffmanTable;
+	internal JpegHuffmanTable AcHuffmanTable;
+}
+
 /// Decoder of the JPEG bitmap format.
 public class JpegDecoder : ImageDecoder
 {
@@ -72,14 +79,14 @@ public class JpegDecoder : ImageDecoder
 		throw ImageFormatException("Unassigned code");
 	}
 
-	short ReadBlock!(JpegHuffmanTable dcTable, JpegHuffmanTable acTable, int lastCoefficient) throws ImageFormatException
+	int ReadBlock!(JpegComponentSetting component, int lastCoefficient) throws ImageFormatException
 	{
-		int code = ReadCode(dcTable);
+		int code = ReadCode(component.DcHuffmanTable);
 		if (code > 11)
 			throw ImageFormatException("Invalid DC code");
 		short dcDelta = ReadSignedBits(code);
 		for (int i = 1; i <= lastCoefficient; i++) {
-			code = ReadCode(acTable);
+			code = ReadCode(component.AcHuffmanTable);
 			if (code == 0)
 				break;
 			i += code >> 4;
@@ -87,7 +94,7 @@ public class JpegDecoder : ImageDecoder
 				throw ImageFormatException("Invalid AC code");
 			ReadSignedBits(code & 0xf);
 		}
-		return dcDelta;
+		return dcDelta * component.QuantizationTable[0];
 	}
 
 	int GetColorWidth() => (Width + ColorSamplingH - 1) / ColorSamplingH;
@@ -100,11 +107,9 @@ public class JpegDecoder : ImageDecoder
 			throw ImageFormatException("Not a JPEG");
 		Components = 0;
 		byte[4][64] quantizationTables;
-		byte[3][] componentQuantizationTables;
 		JpegHuffmanTable()[4] dcHuffmanTables;
 		JpegHuffmanTable()[4] acHuffmanTables;
-		JpegHuffmanTable[3] componentDcHuffmanTables;
-		JpegHuffmanTable[3] componentAcHuffmanTables;
+		JpegComponentSetting()[3] componentSettings;
 		int restartInterval = 0;
 		while (ReadByte() == 0xff) {
 			int code = ReadByte();
@@ -141,7 +146,7 @@ public class JpegDecoder : ImageDecoder
 					int quantizationId = ReadByte();
 					if (quantizationId > 3)
 						throw ImageFormatException("Invalid quantization table");
-					componentQuantizationTables[i] = quantizationTables[quantizationId];
+					componentSettings[i].QuantizationTable = quantizationTables[quantizationId];
 				}
 				break;
 
@@ -194,8 +199,8 @@ public class JpegDecoder : ImageDecoder
 					int huffmanIds = ReadByte();
 					if ((huffmanIds & 0xcc) != 0)
 						throw ImageFormatException("Invalid Huffman table");
-					componentDcHuffmanTables[i] = dcHuffmanTables[huffmanIds >> 4];
-					componentAcHuffmanTables[i] = acHuffmanTables[huffmanIds & 3];
+					componentSettings[i].DcHuffmanTable = dcHuffmanTables[huffmanIds >> 4];
+					componentSettings[i].AcHuffmanTable = acHuffmanTables[huffmanIds & 3];
 				}
 				if (ReadByte() != 0)
 					throw ImageFormatException("Invalid SOS");
@@ -227,14 +232,14 @@ public class JpegDecoder : ImageDecoder
 						}
 						for (int v = 0; v < ColorSamplingV; v++) {
 							for (int h = 0; h < ColorSamplingH; h++) {
-								dcs[0] += ReadBlock(componentDcHuffmanTables[0], componentAcHuffmanTables[0], lastCoefficient) * componentQuantizationTables[0][0];
+								dcs[0] += ReadBlock(componentSettings[0], lastCoefficient);
 								if (x + h < Width && y + v < Height)
 									Pixels[(y + v) * Width + x + h] = 128 + (dcs[0] << bitPosition >> 3);
 							}
 						}
 						if (Components == 3) {
-							dcs[1] += ReadBlock(componentDcHuffmanTables[1], componentAcHuffmanTables[1], lastCoefficient) * componentQuantizationTables[1][0];
-							dcs[2] += ReadBlock(componentDcHuffmanTables[2], componentAcHuffmanTables[2], lastCoefficient) * componentQuantizationTables[2][0];
+							dcs[1] += ReadBlock(componentSettings[1], lastCoefficient);
+							dcs[2] += ReadBlock(componentSettings[2], lastCoefficient);
 							int offset = yLength + y / ColorSamplingV * GetColorWidth() + x / ColorSamplingH;
 							Pixels[offset] = 128 + (dcs[1] << bitPosition >> 3);
 							Pixels[offset + colorLength] = 128 + (dcs[2] << bitPosition >> 3);
