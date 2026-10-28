@@ -370,6 +370,16 @@ public class PngDecoder : ImageDecoder
 				default:
 					throw ImageFormatException("Invalid interlace");
 				}
+				if (Width == 0 || Height == 0)
+					throw ImageFormatException("Zero size");
+				// Keep Width * GetBitsPerPixel() in GetAdam7Stride within int.
+				if (Width > (0x7fffffff - 7) / GetBitsPerPixel())
+					throw ImageFormatException("Image too large");
+				// A non-interlaced image allocates Height * (1 + bytesPerLine) bytes.
+				// Adam7 adds at most 7 bytes per row (filter bytes and
+				// byte-alignment of the pass rows).
+				if (Height > 0x7fffffff / (GetAdam7Stride(7) + 8))
+					throw ImageFormatException("Image too large");
 				TransparentColor = -1;
 				break;
 
