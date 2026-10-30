@@ -80,12 +80,15 @@ public class JpegDecoder : ImageDecoder
 		throw ImageFormatException("Unassigned code");
 	}
 
+	static int Clamp(int b) => b < 0 ? 0 : b > 255 ? 255 : b;
+
 	void ReadBlock!(JpegComponentState! component, int bitPosition, int lastCoefficient, int pixelsOffset, int pixelsStride) throws ImageFormatException
 	{
 		int code = ReadCode(component.DcHuffmanTable);
 		if (code > 11)
 			throw ImageFormatException("Invalid DC code");
-		component.Dc += ReadSignedBits(code) * component.QuantizationTable[0];
+		component.Dc += ReadSignedBits(code);
+		short[64] dctCoeffs = 0;
 		for (int i = 1; i <= lastCoefficient; i++) {
 			code = ReadCode(component.AcHuffmanTable);
 			if (code == 0)
@@ -93,12 +96,116 @@ public class JpegDecoder : ImageDecoder
 			i += code >> 4;
 			if (i > lastCoefficient)
 				throw ImageFormatException("Invalid AC code");
-			ReadSignedBits(code & 0xf);
+			const byte[] zigzag = {
+				 0,  1,  8, 16,  9,  2,  3, 10,
+				17, 24, 32, 25, 18, 11,  4,  5,
+				12, 19, 26, 33, 40, 48, 41, 34,
+				27, 20, 13,  6,  7, 14, 21, 28,
+				35, 42, 49, 56, 57, 50, 43, 36,
+				29, 22, 15, 23, 30, 37, 44, 51,
+				58, 59, 52, 45, 38, 31, 39, 46,
+				53, 60, 61, 54, 47, 55, 62, 63
+			};
+			dctCoeffs[zigzag[i]] = ReadSignedBits(code & 0xf) * component.QuantizationTable[i];
 		}
-		if (pixelsOffset >= 0) {
-			byte pixel = 128 + (component.Dc << bitPosition >> 3);
-			for (int j = 0; j < 8; j++)
-				Pixels.Fill(pixel, pixelsOffset + j * pixelsStride, 8);
+		if (pixelsOffset < 0)
+			return;
+		dctCoeffs[0] = component.Dc * component.QuantizationTable[0];
+		int[64] workspace;
+		// IDCT pass 1
+		for (int x = 0; x < 8; x++) {
+			int z2 = dctCoeffs[2 * 8 + x];
+			int z3 = dctCoeffs[6 * 8 + x];
+			int z1 = (z2 + z3) * 4433;
+			int t2 = z1 + z3 * -15137;
+			int t3 = z1 + z2 * 6270;
+			z2 = dctCoeffs[x];
+			z3 = dctCoeffs[4 * 8 + x];
+			int t0 = z2 + z3 << 13;
+			int t1 = z2 - z3 << 13;
+			int t10 = t0 + t3;
+			int t13 = t0 - t3;
+			int t11 = t1 + t2;
+			int t12 = t1 - t2;
+			t0 = dctCoeffs[7 * 8 + x];
+			t1 = dctCoeffs[5 * 8 + x];
+			t2 = dctCoeffs[3 * 8 + x];
+			t3 = dctCoeffs[1 * 8 + x];
+			z1 = t0 + t3;
+			z2 = t1 + t2;
+			z3 = t0 + t2;
+			int z4 = t1 + t3;
+			int z5 = (z3 + z4) * 9633;
+			t0 *= 2446;
+			t1 *= 16819;
+			t2 *= 25172;
+			t3 *= 12299;
+			z1 *= -7373;
+			z2 *= -20995;
+			z3 *= -16069;
+			z4 *= -3196;
+			z3 += z5;
+			z4 += z5;
+			t0 += z1 + z3;
+			t1 += z2 + z4;
+			t2 += z2 + z3;
+			t3 += z1 + z4;
+			workspace[x] = t10 + t3 + (1 << 10) >> 11;
+			workspace[7 * 8 + x] = t10 - t3 + (1 << 10) >> 11;
+			workspace[1 * 8 + x] = t11 + t2 + (1 << 10) >> 11;
+			workspace[6 * 8 + x] = t11 - t2 + (1 << 10) >> 11;
+			workspace[2 * 8 + x] = t12 + t1 + (1 << 10) >> 11;
+			workspace[5 * 8 + x] = t12 - t1 + (1 << 10) >> 11;
+			workspace[3 * 8 + x] = t13 + t0 + (1 << 10) >> 11;
+			workspace[4 * 8 + x] = t13 - t0 + (1 << 10) >> 11;
+		}
+		// IDCT pass 2
+		for (int y = 0; y < 64; y += 8) {
+			int z2 = workspace[y + 2];
+			int z3 = workspace[y + 6];
+			int z1 = (z2 + z3) * 4433;
+			int t2 = z1 + z3 * -15137;
+			int t3 = z1 + z2 * 6270;
+			z2 = workspace[y];
+			z3 = workspace[y + 4];
+			int t0 = z2 + z3 << 13;
+			int t1 = z2 - z3 << 13;
+			int t10 = t0 + t3;
+			int t13 = t0 - t3;
+			int t11 = t1 + t2;
+			int t12 = t1 - t2;
+			t0 = workspace[y + 7];
+			t1 = workspace[y + 5];
+			t2 = workspace[y + 3];
+			t3 = workspace[y + 1];
+			z1 = t0 + t3;
+			z2 = t1 + t2;
+			z3 = t0 + t2;
+			int z4 = t1 + t3;
+			int z5 = (z3 + z4) * 9633;
+			t0 *= 2446;
+			t1 *= 16819;
+			t2 *= 25172;
+			t3 *= 12299;
+			z1 *= -7373;
+			z2 *= -20995;
+			z3 *= -16069;
+			z4 *= -3196;
+			z3 += z5;
+			z4 += z5;
+			t0 += z1 + z3;
+			t1 += z2 + z4;
+			t2 += z2 + z3;
+			t3 += z1 + z4;
+			int offset = pixelsOffset + (y >> 3) * pixelsStride;
+			Pixels[offset] = Clamp(128 + (t10 + t3 + (1 << 17) >> 18));
+			Pixels[offset + 7] = Clamp(128 + (t10 - t3 + (1 << 17) >> 18));
+			Pixels[offset + 1] = Clamp(128 + (t11 + t2 + (1 << 17) >> 18));
+			Pixels[offset + 6] = Clamp(128 + (t11 - t2 + (1 << 17) >> 18));
+			Pixels[offset + 2] = Clamp(128 + (t12 + t1 + (1 << 17) >> 18));
+			Pixels[offset + 5] = Clamp(128 + (t12 - t1 + (1 << 17) >> 18));
+			Pixels[offset + 3] = Clamp(128 + (t13 + t0 + (1 << 17) >> 18));
+			Pixels[offset + 4] = Clamp(128 + (t13 - t0 + (1 << 17) >> 18));
 		}
 	}
 
@@ -265,8 +372,6 @@ public class JpegDecoder : ImageDecoder
 		}
 		throw ImageFormatException("Not a JPEG");
 	}
-
-	static int Clamp(int b) => b < 0 ? 0 : b > 255 ? 255 : b;
 
 	public override int GetPixel(int x, int y)
 	{
