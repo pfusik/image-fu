@@ -98,9 +98,13 @@ public class JpegDecoder : ImageDecoder
 		return 128 + (component.Dc << bitPosition >> 3);
 	}
 
-	int GetColorWidth() => (Width + ColorSamplingH - 1) / ColorSamplingH;
+	int GetYStride() => Width + 7 & ~7;
 
-	int GetColorHeight() => (Height + ColorSamplingV - 1) / ColorSamplingV;
+	int GetYLength() => (Height + 7 & ~7) * GetYStride();
+
+	int GetColorBlocksH() => ((Width + 7 >> 3) + ColorSamplingH - 1) / ColorSamplingH;
+
+	int GetColorBlocksV() => ((Height + 7 >> 3) + ColorSamplingV - 1) / ColorSamplingV;
 
 	protected override void DoDecode!() throws ImageFormatException
 	{
@@ -124,8 +128,8 @@ public class JpegDecoder : ImageDecoder
 			case 0xc2: // Progressive DCT
 				if (ReadByte() != 8)
 					throw ImageFormatException("Only 8-bit depth supported");
-				Height = ReadWord() + 7 >> 3; // TODO: DC only for now
-				Width = ReadWord() + 7 >> 3;
+				Height = ReadWord();
+				Width = ReadWord();
 				Components = ReadByte();
 				if (Components != 1 && Components != 3)
 					throw ImageFormatException("Expected 1 or 3 components");
@@ -213,13 +217,16 @@ public class JpegDecoder : ImageDecoder
 					throw ImageFormatException("Invalid SOS");
 
 				Bits = 0;
-				int yLength = Height * Width;
-				int colorLength = Components == 3 ? GetColorHeight() * GetColorWidth() : 0;
+				int yStride = GetYStride();
+				int yLength = GetYLength();
+				int colorBlocksH = GetColorBlocksH();
+				int colorBlocksV = GetColorBlocksV();
+				int colorLength = Components == 3 ? colorBlocksH * colorBlocksV << 6 : 0;
 				Pixels = new byte[yLength + (colorLength << 1)];
 				int restartIntervalCounter = restartInterval + 1;
 				int restartMarker = 0;
-				for (int y = 0; y < Height; y += ColorSamplingV) {
-					for (int x = 0; x < Width; x += ColorSamplingH) {
+				for (int colorBlockY = 0; colorBlockY < colorBlocksV; colorBlockY++) {
+					for (int colorBlockX = 0; colorBlockX < colorBlocksH; colorBlockX++) {
 						if (restartInterval > 0) {
 							if (--restartIntervalCounter == 0) {
 								restartIntervalCounter = restartInterval;
@@ -234,14 +241,22 @@ public class JpegDecoder : ImageDecoder
 						for (int v = 0; v < ColorSamplingV; v++) {
 							for (int h = 0; h < ColorSamplingH; h++) {
 								byte pixel = ReadBlock(componentStates[0], bitPosition, lastCoefficient);
-								if (x + h < Width && y + v < Height)
-									Pixels[(y + v) * Width + x + h] = pixel;
+								int x = colorBlockX * ColorSamplingH + h << 3;
+								int y = colorBlockY * ColorSamplingV + v << 3;
+								if (x < Width && y < Height) {
+									for (int j = 0; j < 8; j++)
+										Pixels.Fill(pixel, (y + j) * yStride + x, 8);
+								}
 							}
 						}
 						if (Components == 3) {
-							int offset = yLength + y / ColorSamplingV * GetColorWidth() + x / ColorSamplingH;
-							Pixels[offset] = ReadBlock(componentStates[1], bitPosition, lastCoefficient);
-							Pixels[offset + colorLength] = ReadBlock(componentStates[2], bitPosition, lastCoefficient);
+							int offset = yLength + (colorBlockY * colorBlocksH << 6) + (colorBlockX << 3);
+							byte pixel = ReadBlock(componentStates[1], bitPosition, lastCoefficient);
+							for (int j = 0; j < 8; j++)
+								Pixels.Fill(pixel, offset + (j * colorBlocksH << 3), 8);
+							pixel = ReadBlock(componentStates[2], bitPosition, lastCoefficient);
+							for (int j = 0; j < 8; j++)
+								Pixels.Fill(pixel, colorLength + offset + (j * colorBlocksH << 3), 8);
 						}
 					}
 				}
@@ -259,14 +274,14 @@ public class JpegDecoder : ImageDecoder
 
 	public override int GetPixel(int x, int y)
 	{
-		int cY = Pixels[y * Width + x];
+		int cY = Pixels[y * GetYStride() + x];
 		if (Components != 3)
 			return 0xff << 24 | cY * 0x010101;
 
-		int colorWidth = GetColorWidth();
-		int offset = Height * Width + y / ColorSamplingV * colorWidth + x / ColorSamplingH;
+		int colorBlocksH = GetColorBlocksH();
+		int offset = GetYLength() + (y / ColorSamplingV * colorBlocksH << 3) + x / ColorSamplingH;
 		int cB = Pixels[offset] - 128;
-		int cR = Pixels[offset + GetColorHeight() * colorWidth] - 128;
+		int cR = Pixels[offset + (GetColorBlocksV() * colorBlocksH << 6)] - 128;
 		int r = cY + cR * 1402 / 1000;
 		int b = cY + cB * 1772 / 1000;
 		int g = (cY * 1000 - r * 299 - b * 114) / 587;
