@@ -99,8 +99,7 @@ public class GifDecoder : ImageDecoder
 		ReadWord();
 		Width = ReadWord();
 		Height = ReadWord();
-		if (Width == 0 || Height == 0)
-			throw ImageFormatException("Zero size");
+		CheckZeroSize();
 		if (Width > 0x7fffffff / Height)
 			throw ImageFormatException("Image too large");
 		flags = ReadByte();

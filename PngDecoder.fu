@@ -339,6 +339,7 @@ public class PngDecoder : ImageDecoder
 					throw ImageFormatException("Invalid header");
 				Width = ReadLong();
 				Height = ReadLong();
+				CheckZeroSize();
 				Depth = ReadByte();
 				if (Depth > 16)
 					throw ImageFormatException("Invalid header");
@@ -370,8 +371,6 @@ public class PngDecoder : ImageDecoder
 				default:
 					throw ImageFormatException("Invalid interlace");
 				}
-				if (Width == 0 || Height == 0)
-					throw ImageFormatException("Zero size");
 				// Keep Width * GetBitsPerPixel() in GetAdam7Stride within int.
 				if (Width > (0x7fffffff - 7) / GetBitsPerPixel())
 					throw ImageFormatException("Image too large");

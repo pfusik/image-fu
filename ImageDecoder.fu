@@ -28,6 +28,12 @@ public abstract class ImageDecoder
 			ReadByte();
 	}
 
+	protected void CheckZeroSize() throws ImageFormatException
+	{
+		if (Width == 0 || Height == 0)
+			throw ImageFormatException("Zero size");
+	}
+
 	protected void ReadRgbPalette!(int colors) throws ImageFormatException
 	{
 		for (int i = 0; i < colors; i++) {

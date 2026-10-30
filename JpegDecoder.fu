@@ -241,6 +241,7 @@ public class JpegDecoder : ImageDecoder
 					throw ImageFormatException("Only 8-bit depth supported");
 				Height = ReadWord();
 				Width = ReadWord();
+				CheckZeroSize();
 				Components = ReadByte();
 				if (Components != 1 && Components != 3)
 					throw ImageFormatException("Expected 1 or 3 components");
