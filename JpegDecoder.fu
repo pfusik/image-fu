@@ -4,7 +4,7 @@ class JpegHuffmanTable
 	internal byte[256] Symbols;
 }
 
-class JpegComponentSetting
+class JpegComponentState
 {
 	internal int Dc = 0;
 	internal byte[] QuantizationTable;
@@ -80,7 +80,7 @@ public class JpegDecoder : ImageDecoder
 		throw ImageFormatException("Unassigned code");
 	}
 
-	byte ReadBlock!(JpegComponentSetting! component, int bitPosition, int lastCoefficient) throws ImageFormatException
+	byte ReadBlock!(JpegComponentState! component, int bitPosition, int lastCoefficient) throws ImageFormatException
 	{
 		int code = ReadCode(component.DcHuffmanTable);
 		if (code > 11)
@@ -110,7 +110,7 @@ public class JpegDecoder : ImageDecoder
 		byte[4][64] quantizationTables;
 		JpegHuffmanTable()[4] dcHuffmanTables;
 		JpegHuffmanTable()[4] acHuffmanTables;
-		JpegComponentSetting()[3] componentSettings;
+		JpegComponentState()[3] componentStates;
 		int restartInterval = 0;
 		while (ReadByte() == 0xff) {
 			int code = ReadByte();
@@ -147,7 +147,7 @@ public class JpegDecoder : ImageDecoder
 					int quantizationId = ReadByte();
 					if (quantizationId > 3)
 						throw ImageFormatException("Invalid quantization table");
-					componentSettings[i].QuantizationTable = quantizationTables[quantizationId];
+					componentStates[i].QuantizationTable = quantizationTables[quantizationId];
 				}
 				break;
 
@@ -200,8 +200,8 @@ public class JpegDecoder : ImageDecoder
 					int huffmanIds = ReadByte();
 					if ((huffmanIds & 0xcc) != 0)
 						throw ImageFormatException("Invalid Huffman table");
-					componentSettings[i].DcHuffmanTable = dcHuffmanTables[huffmanIds >> 4];
-					componentSettings[i].AcHuffmanTable = acHuffmanTables[huffmanIds & 3];
+					componentStates[i].DcHuffmanTable = dcHuffmanTables[huffmanIds >> 4];
+					componentStates[i].AcHuffmanTable = acHuffmanTables[huffmanIds & 3];
 				}
 				if (ReadByte() != 0)
 					throw ImageFormatException("Invalid SOS");
@@ -228,20 +228,20 @@ public class JpegDecoder : ImageDecoder
 								restartMarker = restartMarker + 1 & 7;
 								Bits = 0;
 								for (int i = 0; i < Components; i++)
-									componentSettings[i].Dc = 0;
+									componentStates[i].Dc = 0;
 							}
 						}
 						for (int v = 0; v < ColorSamplingV; v++) {
 							for (int h = 0; h < ColorSamplingH; h++) {
-								byte pixel = ReadBlock(componentSettings[0], bitPosition, lastCoefficient);
+								byte pixel = ReadBlock(componentStates[0], bitPosition, lastCoefficient);
 								if (x + h < Width && y + v < Height)
 									Pixels[(y + v) * Width + x + h] = pixel;
 							}
 						}
 						if (Components == 3) {
 							int offset = yLength + y / ColorSamplingV * GetColorWidth() + x / ColorSamplingH;
-							Pixels[offset] = ReadBlock(componentSettings[1], bitPosition, lastCoefficient);
-							Pixels[offset + colorLength] = ReadBlock(componentSettings[2], bitPosition, lastCoefficient);
+							Pixels[offset] = ReadBlock(componentStates[1], bitPosition, lastCoefficient);
+							Pixels[offset + colorLength] = ReadBlock(componentStates[2], bitPosition, lastCoefficient);
 						}
 					}
 				}
