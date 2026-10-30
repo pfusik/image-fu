@@ -80,7 +80,7 @@ public class JpegDecoder : ImageDecoder
 		throw ImageFormatException("Unassigned code");
 	}
 
-	byte ReadBlock!(JpegComponentState! component, int bitPosition, int lastCoefficient) throws ImageFormatException
+	void ReadBlock!(JpegComponentState! component, int bitPosition, int lastCoefficient, int pixelsOffset, int pixelsStride) throws ImageFormatException
 	{
 		int code = ReadCode(component.DcHuffmanTable);
 		if (code > 11)
@@ -95,7 +95,11 @@ public class JpegDecoder : ImageDecoder
 				throw ImageFormatException("Invalid AC code");
 			ReadSignedBits(code & 0xf);
 		}
-		return 128 + (component.Dc << bitPosition >> 3);
+		if (pixelsOffset >= 0) {
+			byte pixel = 128 + (component.Dc << bitPosition >> 3);
+			for (int j = 0; j < 8; j++)
+				Pixels.Fill(pixel, pixelsOffset + j * pixelsStride, 8);
+		}
 	}
 
 	int GetYStride() => Width + 7 & ~7;
@@ -239,24 +243,16 @@ public class JpegDecoder : ImageDecoder
 							}
 						}
 						for (int v = 0; v < ColorSamplingV; v++) {
+							int y = colorBlockY * ColorSamplingV + v << 3;
 							for (int h = 0; h < ColorSamplingH; h++) {
-								byte pixel = ReadBlock(componentStates[0], bitPosition, lastCoefficient);
 								int x = colorBlockX * ColorSamplingH + h << 3;
-								int y = colorBlockY * ColorSamplingV + v << 3;
-								if (x < Width && y < Height) {
-									for (int j = 0; j < 8; j++)
-										Pixels.Fill(pixel, (y + j) * yStride + x, 8);
-								}
+								ReadBlock(componentStates[0], bitPosition, lastCoefficient, x < Width && y < Height ? y * yStride + x : -1, yStride);
 							}
 						}
 						if (Components == 3) {
 							int offset = yLength + (colorBlockY * colorBlocksH << 6) + (colorBlockX << 3);
-							byte pixel = ReadBlock(componentStates[1], bitPosition, lastCoefficient);
-							for (int j = 0; j < 8; j++)
-								Pixels.Fill(pixel, offset + (j * colorBlocksH << 3), 8);
-							pixel = ReadBlock(componentStates[2], bitPosition, lastCoefficient);
-							for (int j = 0; j < 8; j++)
-								Pixels.Fill(pixel, colorLength + offset + (j * colorBlocksH << 3), 8);
+							ReadBlock(componentStates[1], bitPosition, lastCoefficient, offset, colorBlocksH << 3);
+							ReadBlock(componentStates[2], bitPosition, lastCoefficient, offset + colorLength, colorBlocksH << 3);
 						}
 					}
 				}
