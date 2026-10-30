@@ -306,6 +306,8 @@ public class JpegDecoder : ImageDecoder
 				break;
 
 			case 0xda: // Start Of Scan
+				if (Components == 0)
+					throw ImageFormatException("Missing SOF");
 				if (ReadByte() != Components)
 					throw ImageFormatException("Invalid components (non-interleaved?)");
 				if (length != 2 + 1 + Components * 2 + 3)
